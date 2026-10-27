@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Planetario — Sistema Solare in 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --space:#0A1322;
+  --panel:rgba(244,240,228,.94);
+  --panel-solid:#F4F0E4;
+  --ink:#1B2433;
+  --ink-soft:#56607A;
+  --brass:#A77F2E;
+  --line:rgba(27,36,51,.14);
+  --chip:rgba(27,36,51,.06);
+  --label:#E9E4D3;
+  color-scheme:light dark;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --panel:rgba(16,26,43,.92);
+    --panel-solid:#101A2B;
+    --ink:#E9E4D3;
+    --ink-soft:#9AA3B8;
+    --brass:#D2AE62;
+    --line:rgba(233,228,211,.14);
+    --chip:rgba(233,228,211,.07);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --panel:rgba(16,26,43,.92);--panel-solid:#101A2B;--ink:#E9E4D3;--ink-soft:#9AA3B8;
+  --brass:#D2AE62;--line:rgba(233,228,211,.14);--chip:rgba(233,228,211,.07);color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{background:var(--space);color:var(--ink);font-family:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+#scene{position:fixed;inset:0;display:block;touch-action:none}
+#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;left:0;top:0;font:500 12px/1 "Instrument Sans",system-ui,sans-serif;color:var(--label);
+  white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.9);pointer-events:auto;cursor:pointer;padding:4px 6px;will-change:transform}
+.lbl.sel{color:#F2CE7A}
+.lbl.moon{font-size:11px;color:#B9C2D6;pointer-events:none}
+
+.panel{position:fixed;top:calc(env(safe-area-inset-top,0px) + 16px);left:16px;width:320px;max-height:calc(100% - 92px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+  overflow:auto;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:14px;padding:20px 20px 18px}
+h1{font-family:Spectral,Georgia,"Times New Roman",serif;font-weight:400;font-size:28px;line-height:1.1;margin:0 0 4px;letter-spacing:-.01em}
+.sub{font-size:13px;color:var(--ink-soft);margin:0 0 18px;line-height:1.45}
+.date{font-family:Spectral,Georgia,serif;font-size:22px;margin:0 0 10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input[type=date]{font:inherit;font-size:14px;color:var(--ink);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+button{font:inherit;font-size:14px;color:var(--ink);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer}
+button:hover{border-color:var(--brass)}
+button:focus-visible,input:focus-visible,.lbl:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+button.on{background:var(--brass);color:var(--panel-solid);border-color:var(--brass)}
+.speed{font-size:13px;color:var(--ink-soft);min-width:96px;text-align:center}
+.group{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
+.group h2{font-family:Spectral,Georgia,serif;font-weight:400;font-style:italic;font-size:16px;margin:0 0 10px;color:var(--ink-soft)}
+.planets{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.planets button{display:flex;align-items:center;gap:6px;font-size:13px;padding:6px 8px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.info{font-size:13px;line-height:1.5}
+.info .name{font-family:Spectral,Georgia,serif;font-size:21px;margin:0 0 6px}
+.info dl{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin:0}
+.info dt{color:var(--ink-soft)}
+.info dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.note{font-size:11.5px;color:var(--ink-soft);line-height:1.45;margin:14px 0 0}
+
+/* Pannello percorsi */
+.panel.route{left:auto;right:16px;width:340px}
+.od{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:end;margin-bottom:10px}
+.od label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink-soft)}
+select{font:inherit;font-size:14px;color:var(--ink);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%}
+select option{background:var(--panel-solid);color:var(--ink)}
+select:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.chips{margin-top:6px;font-size:13px}
+.chips span{color:var(--ink-soft);min-width:62px}
+.chips button{font-size:13px;padding:4px 9px}
+.summary{display:flex;justify-content:space-between;align-items:baseline;margin:16px 0 6px;padding-top:14px;border-top:1px solid var(--line)}
+.summary .big{font-family:Spectral,Georgia,serif;font-size:36px;line-height:1}
+.summary .unit{font-size:14px;color:var(--ink-soft);margin-left:4px}
+.summary .dur{color:var(--ink-soft);font-size:14px}
+.steps{list-style:none;counter-reset:s;margin:0;padding:0;font-size:13px}
+.steps li{counter-increment:s;display:grid;grid-template-columns:20px 1fr auto;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line);align-items:start}
+.steps li::before{content:counter(s);width:19px;height:19px;border-radius:50%;border:1px solid var(--brass);color:var(--brass);font-size:11px;display:grid;place-items:center}
+.steps small{display:block;color:var(--ink-soft);font-size:11.5px;margin-top:2px}
+.steps b{font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.win{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px;margin:12px 0}
+.win dt{color:var(--ink-soft)}
+.win dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.win dd.launch{color:var(--brass);font-weight:600}
+#replan{margin-top:10px;width:100%;font-size:13px}
+.alt{display:grid;grid-template-columns:10px 1fr auto auto;gap:8px;align-items:center;width:100%;text-align:left;margin-bottom:4px;font-size:13px}
+.alt .v{font-variant-numeric:tabular-nums}
+.alt .t{color:var(--ink-soft);min-width:72px;text-align:right;font-size:12px}
+.alt.on .t{color:inherit}
+.pork{margin:4px 0 6px}
+.pork-head{display:flex;justify-content:space-between;align-items:center;min-height:28px;margin-bottom:6px;font-family:Spectral,Georgia,serif;font-style:italic;font-size:15px;color:var(--ink-soft)}
+.pork-head button{font-family:"Instrument Sans",system-ui,sans-serif;font-style:normal;font-size:12px;padding:3px 9px}
+#porkC{display:block;width:100%;height:140px;border-radius:8px;cursor:crosshair;border:1px solid var(--line)}
+.pork-ax{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-soft);margin-top:4px;font-variant-numeric:tabular-nums}
+.pork-cap{font-size:11.5px;color:var(--ink-soft);line-height:1.45;margin:4px 0 0}
+.empty{font-size:13px;color:var(--ink-soft);margin:16px 0 0}
+button:disabled{opacity:.4;cursor:not-allowed}
+.steps li.leg{counter-increment:none;display:block;border-bottom:0;padding:12px 0 2px;font-family:Spectral,Georgia,serif;font-style:italic;font-size:15px;color:var(--ink-soft)}
+.steps li.leg::before{content:none}
+.steps li.stay{background:var(--chip);border-radius:8px;padding:8px 6px;border-bottom:0;margin:4px 0}
+.steps li.stay::before{border-style:dashed}
+
+/* Pannelli riducibili e dock */
+.panel{z-index:10}
+.ph{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.min{flex:none;width:30px;height:30px;padding:0;display:grid;place-items:center;font-size:18px;line-height:1;margin-top:2px}
+.panel.closed{display:none}
+.panel.impara{left:352px;width:420px}
+.panel.esplora.closed ~ .panel.impara{left:16px}
+.dock{position:fixed;z-index:50;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;gap:6px;padding:6px;
+  background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:12px}
+.dock button{font-size:13px;padding:6px 12px;white-space:nowrap}
+.dock button.pulse{box-shadow:0 0 0 3px var(--brass)}
+.dock .sep{width:1px;background:var(--line);margin:2px 2px}
+
+/* Termini del glossario */
+.term{font:inherit;color:inherit;background:none;border:0;border-bottom:1px dotted var(--brass);border-radius:0;padding:0;cursor:help;text-align:inherit}
+.term:hover{color:var(--brass);border-color:var(--brass)}
+
+/* Impara */
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin:12px 0 14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.tabs button{font-size:13px;padding:5px 9px}
+.pane{font-size:13.5px;line-height:1.55}
+.pane p{margin:0 0 10px}
+.pane h3{font-family:Spectral,Georgia,serif;font-weight:400;font-size:19px;line-height:1.2;margin:0 0 8px}
+.pane h4{font-family:Spectral,Georgia,serif;font-weight:400;font-style:italic;font-size:16px;color:var(--ink-soft);margin:18px 0 8px}
+.llist button{display:block;width:100%;text-align:left;margin-bottom:6px;padding:10px 12px;border-radius:10px}
+.llist b{display:block;font-family:Spectral,Georgia,serif;font-weight:400;font-size:17px;margin-bottom:2px}
+.llist small{display:block;color:var(--ink-soft);font-size:12.5px;line-height:1.4}
+.llist .n{color:var(--brass);font-variant-numeric:tabular-nums}
+.back{font-size:12.5px;padding:3px 9px;margin-bottom:12px}
+.count{font-size:12px;color:var(--ink-soft);margin:0 0 4px}
+.bar{height:3px;background:var(--line);border-radius:2px;margin:0 0 12px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--brass)}
+.act{width:100%;margin:2px 0 10px}
+details.ask{background:var(--chip);border-radius:8px;padding:9px 12px;margin:10px 0}
+details.ask summary{cursor:pointer;font-weight:500}
+details.ask p{margin:8px 0 0}
+.lnav{display:flex;justify-content:space-between;gap:8px;margin-top:12px}
+.formula{font-family:Spectral,Georgia,serif;font-size:18px;text-align:center;margin:8px 0 10px}
+.kchips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.kchips button{font-size:12.5px;padding:4px 9px;display:flex;align-items:center;gap:5px}
+.kstats{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin:10px 0;font-variant-numeric:tabular-nums}
+.kstats dt{color:var(--ink-soft)} .kstats dd{margin:0;text-align:right}
+.warn{font-size:12px;color:var(--ink-soft);font-style:italic}
+.tablewrap{overflow-x:auto}
+.kt{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.kt th{font-weight:500;color:var(--ink-soft);text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
+.kt td{text-align:right;padding:4px 6px;border-bottom:1px dashed var(--line)}
+.kt th:first-child,.kt td:first-child{text-align:left}
+#kplot{display:block;width:100%;height:190px;margin-top:10px}
+.gsearch{font:inherit;font-size:14px;width:100%;color:var(--ink);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-bottom:8px}
+.gl{margin:0}
+.gl div{padding:8px 6px;border-bottom:1px dashed var(--line);border-radius:6px;transition:background .6s}
+.gl dt{font-weight:600}
+.gl dd{margin:2px 0 0;color:var(--ink)}
+.gl div.hl{background:rgba(167,127,46,.2)}
+.mcard{padding:12px 0;border-bottom:1px dashed var(--line)}
+.mcard b{font-family:Spectral,Georgia,serif;font-weight:400;font-size:17px}
+.mcard .meta{font-size:12.5px;color:var(--ink-soft);margin:2px 0 6px}
+.mcard button{font-size:12.5px;padding:4px 10px}
+.mres b{font-family:inherit;font-size:inherit;font-weight:600}
+.mres{background:var(--chip);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12.5px}
+.qopts{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.qopts button{text-align:left;padding:9px 12px;line-height:1.4}
+.qopts button.ok{border-color:#3E9B6B;background:rgba(62,155,107,.16)}
+.qopts button.ko{border-color:#C24B3A;background:rgba(194,75,58,.14)}
+.qopts button:disabled{opacity:1;cursor:default}
+.qfb{background:var(--chip);border-radius:8px;padding:9px 12px;margin-bottom:10px}
+.qscore{font-family:Spectral,Georgia,serif;font-size:40px;line-height:1;margin:6px 0}
+.lbl.kep{color:#F2CE7A;font-size:11.5px}
+
+@media (max-width:640px){
+  .panel,.panel.route,.panel.impara{top:auto;left:8px;right:8px;width:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 64px);max-height:56%;border-radius:14px;padding:16px}
+  .panel.esplora.closed ~ .panel.impara{left:8px}
+  h1{font-size:23px}
+  .dock{left:8px;right:8px;transform:none;justify-content:space-between}
+  .dock button{flex:1;padding:8px 4px;font-size:12.5px}
+  .dock .sep{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="Vista 3D del Sistema Solare"></canvas>
+<div id="labels"></div>
+
+<aside class="panel esplora" id="panel" aria-label="Sistema Solare">
+  <div class="ph"><h1>Sistema Solare</h1><button class="min" data-close="esplora" aria-label="Riduci a icona il pannello Sistema Solare" title="Riduci a icona">–</button></div>
+  <p class="sub">Posizioni reali dei pianeti calcolate dagli <button type="button" class="term" data-term="elementi">elementi orbitali</button> del JPL. Trascina per ruotare, rotella o pizzico per lo zoom.</p>
+
+  <div class="date" id="dateText">—</div>
+  <div class="row">
+    <input type="date" id="dateIn" aria-label="Scegli la data">
+    <button id="today">Oggi</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button id="slower" aria-label="Più lento o indietro">◀</button>
+    <button id="play" aria-label="Avvia o ferma">Avvia</button>
+    <button id="faster" aria-label="Più veloce">▶</button>
+    <span class="speed" id="speedText"></span>
+  </div>
+
+  <div class="collapsible">
+    <div class="group">
+      <h2>Vista</h2>
+      <div class="row">
+        <button id="scaleComp" class="on">Distanze compresse</button>
+        <button id="scaleReal">In scala reale</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="labelsBtn" class="on" aria-pressed="true" title="Scorciatoia: tasto L">Etichette</button>
+        <button id="moonsBtn" class="on" aria-pressed="true" title="Scorciatoia: tasto S">Satelliti</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Segui un corpo</h2>
+      <div class="planets" id="plist"></div>
+    </div>
+
+    <div class="group info" id="info"></div>
+
+    <p class="note">Elementi kepleriani approssimati di E. M. Standish (JPL/NASA), validi tra il 1800 e il 2050 con errori di pochi minuti d’arco. Le dimensioni dei pianeti sono ingrandite per renderli visibili. I satelliti hanno periodi reali e distanze compresse; Luna e satelliti galileiani seguono la loro longitudine media, per gli altri la posizione lungo l’orbita è indicativa. I nomi dei satelliti compaiono quando segui il loro pianeta.</p>
+  </div>
+</aside>
+<aside class="panel impara" id="imparaPanel" aria-label="Impara">
+  <div class="ph"><h1>Impara</h1><button class="min" data-close="impara" aria-label="Riduci a icona il pannello Impara" title="Riduci a icona">–</button></div>
+  <div class="tabs" role="tablist" aria-label="Sezioni">
+    <button role="tab" data-tab="lezioni" class="on" aria-selected="true">Lezioni</button>
+    <button role="tab" data-tab="keplero" aria-selected="false">Keplero</button>
+    <button role="tab" data-tab="missioni" aria-selected="false">Missioni</button>
+    <button role="tab" data-tab="glossario" aria-selected="false">Glossario</button>
+    <button role="tab" data-tab="quiz" aria-selected="false">Quiz</button>
+  </div>
+  <div class="pane" id="tab-lezioni" role="tabpanel"></div>
+  <div class="pane" id="tab-keplero" role="tabpanel" hidden></div>
+  <div class="pane" id="tab-missioni" role="tabpanel" hidden></div>
+  <div class="pane" id="tab-glossario" role="tabpanel" hidden>
+    <input class="gsearch" id="gsearch" type="search" placeholder="Cerca un termine" aria-label="Cerca nel glossario">
+    <dl class="gl" id="glist"></dl>
+  </div>
+  <div class="pane" id="tab-quiz" role="tabpanel" hidden></div>
+</aside>
+
+
+<aside class="panel route" id="routePanel" aria-label="Percorsi">
+  <div class="ph"><h1>Percorsi</h1><button class="min" data-close="percorsi" aria-label="Riduci a icona il pannello Percorsi" title="Riduci a icona">–</button></div>
+  <p class="sub">Quanto <button type="button" class="term" data-term="dv">ΔV</button> serve per andare da un pianeta all’altro, quando partire e quanto dura il viaggio.</p>
+  <div class="od">
+    <label>Partenza<select id="fromSel"></select></label>
+    <button id="swap" aria-label="Inverti partenza e arrivo" title="Inverti">⇅</button>
+    <label>Arrivo<select id="toSel"></select></label>
+  </div>
+  <div class="row chips"><span>Viaggio</span><button data-trip="andata" class="on">Solo andata</button><button data-trip="ritorno">Andata e ritorno</button></div>
+  <div class="row chips"><span>Parti da</span><button data-dep="orbita" class="on">Orbita bassa</button><button data-dep="superficie">Superficie</button></div>
+  <div class="row chips"><span>Arriva in</span><button data-arr="sorvolo">Sorvolo</button><button data-arr="orbita" class="on">Orbita</button><button data-arr="superficie">Superficie</button></div>
+  <div class="row chips" id="aeroRow" hidden><span>Frenata</span><button data-aero="motori" class="on">A motori</button><button data-aero="atmosfera">Nell’atmosfera</button></div>
+  <div id="route"></div>
+  <div class="collapsible2">
+    <button id="replan">Cerca la finestra dalla data mostrata</button>
+    <div class="group" id="alts"></div>
+    <p class="note">Ogni traiettoria risolve il problema di Lambert tra le posizioni reali dei pianeti, con orbite ellittiche e inclinate: per ogni coppia si prova ogni combinazione di data di partenza e durata e si sceglie quella con il ΔV minore. La sonda segue l’orbita kepleriana calcolata e arriva esattamente sul pianeta. «Con orbite ideali» è il valore di Hohmann su orbite circolari e complanari, utile come confronto. Orbita bassa: 200 km di quota (5% del raggio per i giganti gassosi). Decollo e discesa includono le perdite tipiche e non sfruttano l’atmosfera. Non sono considerate le fionde gravitazionali, che nelle missioni reali possono ridurre molto il ΔV, soprattutto verso i pianeti esterni.</p>
+  </div>
+</aside>
+
+<nav class="dock" aria-label="Pannelli">
+  <button data-open="esplora" aria-pressed="true">Sistema Solare</button>
+  <button data-open="percorsi" aria-pressed="false">Percorsi</button>
+  <button data-open="impara" aria-pressed="true">Impara</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button id="hideAll" title="Scorciatoia: tasto H">Solo 3D</button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+"use strict";
+const D2R = Math.PI/180;
+
+// Elementi kepleriani J2000 e variazioni per secolo (Standish, JPL, Tabella 1)
+// [a (UA), e, I (°), L (°), ϖ (°), Ω (°)]
+const BODIES = [
+  {id:"mercurio",name:"Mercurio",color:"#A9A39A",size:.9, radius:2440, el:[0.38709927,0.20563593,7.00497902,252.25032350,77.45779628,48.33076593], rt:[0.00000037,0.00001906,-0.00594749,149472.67411175,0.16047689,-0.12534081]},
+  {id:"venere",  name:"Venere",  color:"#E3C489",size:1.3,radius:6052, el:[0.72333566,0.00677672,3.39467605,181.97909950,131.60246718,76.67984255], rt:[0.00000390,-0.00004107,-0.00078890,58517.81538729,0.00268329,-0.27769418]},
+  {id:"terra",   name:"Terra",   color:"#4F8FD9",size:1.4,radius:6371, el:[1.00000261,0.01671123,-0.00001531,100.46457166,102.93768193,0.0], rt:[0.00000562,-0.00004392,-0.01294668,35999.37244981,0.32327364,0.0]},
+  {id:"marte",   name:"Marte",   color:"#C9603B",size:1.1,radius:3390, el:[1.52371034,0.09339410,1.84969142,-4.55343205,-23.94362959,49.55953891], rt:[0.00001847,0.00007882,-0.00813131,19140.30268499,0.44441088,-0.29257343]},
+  {id:"giove",   name:"Giove",   color:"#D2A879",size:3.2,radius:69911,el:[5.20288700,0.04838624,1.30439695,34.39644051,14.72847983,100.47390909], rt:[-0.00011607,-0.00013253,-0.00183714,3034.74612775,0.21252668,0.20469106]},
+  {id:"saturno", name:"Saturno", color:"#E2CD94",size:2.8,radius:58232,el:[9.53667594,0.05386179,2.48599187,49.95424423,92.59887831,113.66242448], rt:[-0.00125060,-0.00050991,0.00193609,1222.49362201,-0.41897216,-0.28867794]},
+  {id:"urano",   name:"Urano",   color:"#9ED8DB",size:2.1,radius:25362,el:[19.18916464,0.04725744,0.77263783,313.23810451,170.95427630,74.01692503], rt:[-0.00196176,-0.00004397,-0.00242939,428.48202785,0.40805281,0.04240589]},
+  {id:"nettuno", name:"Nettuno", color:"#4B70DD",size:2.0,radius:24622,el:[30.06992276,0.00859048,1.77004347,-55.12002969,44.96476227,131.78422574], rt:[0.00026291,0.00005105,0.00035372,218.45945325,-0.32241464,-0.00508664]},
+  {id:"plutone", name:"Plutone", color:"#C7B49B",size:.8, radius:1188, el:[39.48211675,0.24882730,17.14001206,238.92903833,224.06891629,110.30393684], rt:[-0.00031596,0.00005170,0.00004818,145.20780515,-0.04062942,-0.01183482]}
+];
+
+// Satelliti principali: a (km), r raggio (km), P periodo (giorni, negativo = retrogrado), L0 longitudine media all’epoca ep
+const MOONS = {
+  terra:[{name:"Luna",a:384400,r:1737,P:27.321582,L0:218.316,ep:2451545,c:"#C9C6BF"}],
+  marte:[{name:"Fobos",a:9376,r:11,P:0.31891,c:"#8A7B6E"},{name:"Deimos",a:23463,r:6,P:1.26244,c:"#8A7B6E"}],
+  giove:[
+    {name:"Io",a:421700,r:1822,P:1.769138,L0:106.07719,ep:2443000.5,c:"#E8D27A"},
+    {name:"Europa",a:671034,r:1561,P:3.551181,L0:175.73161,ep:2443000.5,c:"#D9CDB8"},
+    {name:"Ganimede",a:1070412,r:2634,P:7.154553,L0:120.55883,ep:2443000.5,c:"#A79A88"},
+    {name:"Callisto",a:1882709,r:2410,P:16.689018,L0:84.44459,ep:2443000.5,c:"#7D7266"}],
+  saturno:[
+    {name:"Encelado",a:237948,r:252,P:1.370218,c:"#EEF0F2"},
+    {name:"Teti",a:294619,r:531,P:1.887802},
+    {name:"Dione",a:377396,r:561,P:2.736915},
+    {name:"Rea",a:527108,r:764,P:4.518212},
+    {name:"Titano",a:1221870,r:2575,P:15.945,c:"#D9A85B"},
+    {name:"Giapeto",a:3560820,r:735,P:79.3215,c:"#8F8576"}],
+  urano:[
+    {name:"Miranda",a:129390,r:236,P:1.413479},
+    {name:"Ariel",a:191020,r:579,P:2.520379},
+    {name:"Umbriel",a:266000,r:585,P:4.144177,c:"#7E7A74"},
+    {name:"Titania",a:435910,r:789,P:8.705872},
+    {name:"Oberon",a:583520,r:761,P:13.463239}],
+  nettuno:[{name:"Tritone",a:354759,r:1353,P:-5.876854,c:"#D7CDC6"}],
+  plutone:[{name:"Caronte",a:19591,r:606,P:6.387221,c:"#9C948A"}]
+};
+const TILT = {terra:5.1,marte:25.2,giove:3.1,saturno:26.7,urano:97.8,nettuno:28.3,plutone:119.6};
+
+// ---------- Meccanica orbitale ----------
+const jdFromMs = ms => ms/86400000 + 2440587.5;
+const msFromJd = jd => (jd - 2440587.5)*86400000;
+
+function elementsAt(b, jd){
+  const T = (jd - 2451545.0)/36525;
+  return b.el.map((v,i)=> v + b.rt[i]*T);
+}
+function solveKepler(M, e){
+  let E = M + e*Math.sin(M);
+  for(let i=0;i<12;i++){
+    const d = (E - e*Math.sin(E) - M)/(1 - e*Math.cos(E));
+    E -= d; if(Math.abs(d)<1e-10) break;
+  }
+  return E;
+}
+// Posizione eliocentrica eclittica (UA) per anomalia eccentrica E
+function posFromE(a,e,I,w,O,E){
+  const xp = a*(Math.cos(E)-e), yp = a*Math.sqrt(1-e*e)*Math.sin(E);
+  const cw=Math.cos(w), sw=Math.sin(w), cO=Math.cos(O), sO=Math.sin(O), cI=Math.cos(I), sI=Math.sin(I);
+  return [
+    (cw*cO - sw*sO*cI)*xp + (-sw*cO - cw*sO*cI)*yp,
+    (cw*sO + sw*cO*cI)*xp + (-sw*sO + cw*cO*cI)*yp,
+    (sw*sI)*xp + (cw*sI)*yp
+  ];
+}
+function helio(b, jd){
+  const [a,e,Id,L,wbar,Od] = elementsAt(b,jd);
+  const w = (wbar-Od)*D2R, O = Od*D2R, I = Id*D2R;
+  let M = ((L - wbar) % 360)*D2R;
+  if(M > Math.PI) M -= 2*Math.PI; if(M < -Math.PI) M += 2*Math.PI;
+  const E = solveKepler(M,e);
+  return {p:posFromE(a,e,I,w,O,E), a, e, I:Id};
+}
+function orbitPoints(b, jd, n=360){
+  const [a,e,Id,,wbar,Od] = elementsAt(b,jd);
+  const w=(wbar-Od)*D2R, O=Od*D2R, I=Id*D2R, pts=[];
+  for(let k=0;k<=n;k++) pts.push(posFromE(a,e,I,w,O,k/n*2*Math.PI));
+  return pts;
+}
+
+// ---------- Scala ----------
+let scaleMode = "comp";
+// Distanza dal Sole (UA) → unità della scena
+const sceneR = r => scaleMode==="real" ? r*30 : 40*Math.pow(r,.45);
+function toScene(p){
+  const r = Math.hypot(p[0],p[1],p[2]) || 1e-9;
+  const R = sceneR(r);
+  const k = R/r;
+  // eclittica → three.js (y in alto)
+  return new THREE.Vector3(p[0]*k, p[2]*k, -p[1]*k);
+}
+
+// ---------- Scena ----------
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0A1322);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 40000);
+camera.position.set(0, 140, 190);
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = .08;
+controls.minDistance = 2; controls.maxDistance = 4500;
+
+scene.add(new THREE.AmbientLight(0xffffff, .22));
+scene.add(new THREE.PointLight(0xfff1d6, 1.6, 0, 0));
+
+// Stelle
+(function(){
+  const g = new THREE.BufferGeometry(), N = 3500, arr = new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const u=Math.random()*2-1, t=Math.random()*Math.PI*2, r=15000+Math.random()*5000, s=Math.sqrt(1-u*u);
+    arr[i*3]=r*s*Math.cos(t); arr[i*3+1]=r*u; arr[i*3+2]=r*s*Math.sin(t);
+  }
+  g.setAttribute("position", new THREE.BufferAttribute(arr,3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({color:0xCFD6E6,size:1.6,sizeAttenuation:false,transparent:true,opacity:.7})));
+})();
+
+// Sole con alone
+const sun = new THREE.Mesh(new THREE.SphereGeometry(3.2,48,32), new THREE.MeshBasicMaterial({color:0xFFD27A}));
+scene.add(sun);
+(function(){
+  const c=document.createElement("canvas"); c.width=c.height=128; const x=c.getContext("2d");
+  const gr=x.createRadialGradient(64,64,0,64,64,64);
+  gr.addColorStop(0,"rgba(255,214,130,.85)"); gr.addColorStop(.35,"rgba(255,180,80,.25)"); gr.addColorStop(1,"rgba(255,160,60,0)");
+  x.fillStyle=gr; x.fillRect(0,0,128,128);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthWrite:false,blending:THREE.AdditiveBlending}));
+  s.scale.set(22,22,1); scene.add(s); sun.userData.glow=s;
+})();
+
+// Piano dell’eclittica (griglia leggera)
+const grid = new THREE.PolarGridHelper(260, 12, 10, 96, 0x1E2C44, 0x16223A);
+grid.material.transparent = true; grid.material.opacity = .55;
+scene.add(grid);
+
+// Pianeti e orbite
+const labelsEl = document.getElementById("labels");
+BODIES.forEach(b=>{
+  const mat = new THREE.MeshStandardMaterial({color:b.color, roughness:.85, metalness:0, emissive:new THREE.Color(b.color), emissiveIntensity:.12});
+  b.mesh = new THREE.Mesh(new THREE.SphereGeometry(b.size,32,24), mat);
+  b.mesh.userData.body = b;
+  scene.add(b.mesh);
+  if(b.id==="saturno"){
+    const ring = new THREE.Mesh(new THREE.RingGeometry(b.size*1.35,b.size*2.3,64),
+      new THREE.MeshBasicMaterial({color:0xD8C89A,side:THREE.DoubleSide,transparent:true,opacity:.55}));
+    ring.rotation.x = Math.PI/2 - 26.7*D2R; b.mesh.add(ring);
+  }
+  b.orbitGeo = new THREE.BufferGeometry();
+  b.orbitGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(361*3),3));
+  b.orbit = new THREE.Line(b.orbitGeo, new THREE.LineBasicMaterial({color:b.color, transparent:true, opacity:.38}));
+  scene.add(b.orbit);
+  const l = document.createElement("div");
+  l.className="lbl"; l.textContent=b.name; l.tabIndex=0;
+  l.addEventListener("click",()=>select(b.id));
+  l.addEventListener("keydown",e=>{if(e.key==="Enter")select(b.id)});
+  labelsEl.appendChild(l); b.label=l;
+});
+
+// Sistemi di satelliti
+const allMoons = [];
+BODIES.forEach(b=>{
+  const list = MOONS[b.id]; b.moons = list || [];
+  if(!list) return;
+  const sys = new THREE.Group(); sys.rotation.x = (TILT[b.id]||0)*D2R; scene.add(sys); b.moonSys = sys;
+  const base = b.size*(b.id==="saturno" ? 2.5 : 1.6);
+  b.moonBase = base;
+  list.forEach((m,i)=>{
+    m.parent = b;
+    m.d0 = base + Math.sqrt(m.a/b.radius)*b.size*.35;
+    m.dist = m.d0;
+    m.size = .18 + Math.sqrt(m.r/2634)*.42;
+    if(m.L0===undefined){ m.L0 = (i*137.5 + b.radius) % 360; m.ep = 2451545; }
+    m.mesh = new THREE.Mesh(new THREE.SphereGeometry(m.size,20,14), new THREE.MeshStandardMaterial({color:m.c||"#BDB7AC",roughness:.9}));
+    sys.add(m.mesh);
+    const pts=[]; for(let k=0;k<=96;k++){const t=k/96*Math.PI*2; pts.push(new THREE.Vector3(Math.cos(t),0,-Math.sin(t)));}
+    m.orbit = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color:0x8C97AE,transparent:true,opacity:.3}));
+    sys.add(m.orbit);
+    const l=document.createElement("div"); l.className="lbl moon"; l.textContent=m.name; labelsEl.appendChild(l); m.label=l;
+    allMoons.push(m);
+  });
+});
+
+// Adatta ogni sistema di satelliti allo spazio libero tra le orbite vicine,
+// così le lune non invadono mai l’orbita di un altro pianeta
+function layoutMoons(){
+  const R = BODIES.map(b=>sceneR(b.el[0]));
+  BODIES.forEach((b,i)=>{
+    b.kp = 1; b.mesh.scale.setScalar(1);
+    if(!b.moons.length) return;
+    const gaps=[];
+    if(i>0) gaps.push(R[i]-R[i-1]);
+    if(i<BODIES.length-1) gaps.push(R[i+1]-R[i]);
+    const allowed = .35*Math.min(...gaps);
+    const base = b.moonBase, outer = Math.max(...b.moons.map(m=>m.d0));
+    let kp=1, lo=base, hi=outer;
+    if(outer > allowed){
+      kp = Math.min(1, allowed/(base*1.4));
+      lo = base*kp; hi = allowed;
+    }
+    b.kp = kp; b.mesh.scale.setScalar(kp);
+    b.moons.forEach(m=>{
+      m.dist = outer>base ? lo + (m.d0-base)*(hi-lo)/(outer-base) : hi;
+      m.orbit.scale.setScalar(m.dist);
+      m.mesh.scale.setScalar(Math.max(kp,.5));
+    });
+  });
+}
+
+function rebuildOrbits(jd){
+  BODIES.forEach(b=>{
+    const pts = orbitPoints(b,jd), arr = b.orbitGeo.attributes.position.array;
+    pts.forEach((p,i)=>{const v=toScene(p); arr[i*3]=v.x; arr[i*3+1]=v.y; arr[i*3+2]=v.z;});
+    b.orbitGeo.attributes.position.needsUpdate = true;
+    b.orbitGeo.computeBoundingSphere();
+  });
+}
+
+// ---------- Stato e UI ----------
+let jd = jdFromMs(Date.now());
+let lastOrbitJd = jd;
+const SPEEDS = [-1825,-365,-100,-30,-7,-1,1,7,30,100,365,1825];
+let speedIdx = 7, playing = false;
+let selected = "sole";
+const $ = id => document.getElementById(id);
+const term = (k,label) => `<button type="button" class="term" data-term="${k}">${label}</button>`;
+const fmtDate = new Intl.DateTimeFormat("it-IT",{day:"numeric",month:"long",year:"numeric"});
+
+function speedLabel(){
+  const s = SPEEDS[speedIdx], abs=Math.abs(s);
+  const t = abs===1 ? "1 giorno/s" : abs===365 ? "1 anno/s" : abs===1825 ? "5 anni/s" : abs+" giorni/s";
+  return (s<0?"indietro, ":"")+t;
+}
+function updateSpeedUI(){ $("speedText").textContent = speedLabel(); $("play").textContent = playing?"Ferma":"Avvia"; $("play").classList.toggle("on",playing); }
+
+$("play").onclick = ()=>{playing=!playing; updateSpeedUI();};
+$("faster").onclick = ()=>{speedIdx=Math.min(SPEEDS.length-1,speedIdx+1); updateSpeedUI();};
+$("slower").onclick = ()=>{speedIdx=Math.max(0,speedIdx-1); updateSpeedUI();};
+$("today").onclick = ()=>{jd=jdFromMs(Date.now()); rebuildOrbits(jd); lastOrbitJd=jd;};
+$("dateIn").addEventListener("change",e=>{
+  if(!e.target.value) return;
+  const [y,m,d] = e.target.value.split("-").map(Number);
+  jd = jdFromMs(Date.UTC(y,m-1,d,12)); rebuildOrbits(jd); lastOrbitJd=jd;
+});
+function setScale(mode){
+  scaleMode=mode; $("scaleComp").classList.toggle("on",mode==="comp"); $("scaleReal").classList.toggle("on",mode==="real");
+  rebuildOrbits(jd);
+  grid.scale.setScalar(mode==="real" ? 6 : 1);
+  layoutMoons();
+  drawTrajectory();
+  const k=mode==='real'?.3:1; sun.scale.setScalar(k); sun.userData.glow.scale.set(22*k,22*k,1);
+  rebuildKepler(); if(curTab==='keplero') renderKepler();
+}
+$("scaleComp").onclick=()=>setScale("comp");
+$("scaleReal").onclick=()=>setScale("real");
+let showLabels = true, showMoons = true;
+function setPressed(id,val){ const e=$(id); e.classList.toggle("on",val); e.setAttribute("aria-pressed",String(val)); }
+function toggleLabels(){ showLabels=!showLabels; setPressed("labelsBtn",showLabels); }
+function toggleMoons(){ showMoons=!showMoons; setPressed("moonsBtn",showMoons); }
+$("labelsBtn").onclick = toggleLabels;
+$("moonsBtn").onclick = toggleMoons;
+addEventListener("keydown",e=>{
+  if(e.target.tagName==="INPUT"||e.ctrlKey||e.metaKey||e.altKey) return;
+  const k=e.key.toLowerCase();
+  if(k==="l") toggleLabels(); else if(k==="s") toggleMoons();
+});
+
+const plist = $("plist");
+[{id:"sole",name:"Sole",color:"#FFD27A"}, ...BODIES].forEach(b=>{
+  const btn=document.createElement("button");
+  btn.innerHTML=`<span class="dot" style="background:${b.color}"></span>${b.name}`;
+  btn.dataset.id=b.id; btn.onclick=()=>select(b.id);
+  plist.appendChild(btn);
+});
+
+function select(id){
+  selected=id;
+  plist.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.id===id));
+  BODIES.forEach(b=>{ b.label.classList.toggle("sel",b.id===id); b.orbit.material.opacity = (id==="sole"||b.id===id)?.5:.18; });
+  const b = BODIES.find(x=>x.id===id);
+  if(b){
+    const off = camera.position.clone().sub(controls.target).normalize().multiplyScalar(b.size*9+6);
+    camera.position.copy(b.mesh.position).add(off);
+  }
+  renderInfo();
+}
+
+const nf = (v,d=3)=>v.toLocaleString("it-IT",{minimumFractionDigits:d,maximumFractionDigits:d});
+const AU_KM = 149597870.7;
+let earthPos=[0,0,0];
+function renderInfo(){
+  const el=$("info");
+  if(selected==="sole"){
+    el.innerHTML=`<div class="name">Sole</div><dl>
+      <dt>Raggio</dt><dd>696.340 km</dd>
+      <dt>Distanza dalla Terra</dt><dd>${nf(Math.hypot(...earthPos))} ${term('ua','UA')}</dd></dl>`;
+    return;
+  }
+  const b=BODIES.find(x=>x.id===selected), h=b.cur;
+  const r=Math.hypot(...h.p);
+  const dE = b.id==="terra" ? null : Math.hypot(h.p[0]-earthPos[0],h.p[1]-earthPos[1],h.p[2]-earthPos[2]);
+  const period = Math.pow(h.a,1.5);
+  el.innerHTML=`<div class="name">${b.name}</div><dl>
+    <dt>Distanza dal Sole</dt><dd>${nf(r)} ${term('ua','UA')}</dd>
+    <dt>${term('velocita','Velocità orbitale')}</dt><dd>${nf(norm3(stateOf(b,jd).v)*KMS,1)} km/s</dd>
+    <dt></dt><dd>${Math.round(r*AU_KM/1e6).toLocaleString("it-IT")} mln km</dd>
+    ${dE!==null?`<dt>Distanza dalla Terra</dt><dd>${nf(dE)} UA</dd>
+    <dt>${term('minluce','Luce impiega')}</dt><dd>${nf(dE*499.005/60,1)} min</dd>`:""}
+    <dt>${term('semiasse','Semiasse maggiore')}</dt><dd>${nf(h.a)} UA</dd>
+    <dt>${term('eccentricita','Eccentricità')}</dt><dd>${nf(h.e,4)}</dd>
+    <dt>${term('inclinazione','Inclinazione')}</dt><dd>${nf(h.I,2)}°</dd>
+    <dt>${term('periodo','Periodo orbitale')}</dt><dd>${period<2?nf(period*365.25,1)+" giorni":nf(period,2)+" anni"}</dd>
+    <dt>Raggio</dt><dd>${b.radius.toLocaleString("it-IT")} km</dd></dl>
+    ${b.moons.length?`<p style="margin:10px 0 0;color:var(--ink-soft)">Satelliti: ${b.moons.map(m=>m.name).join(", ")}</p>`:""}`;
+}
+
+// Click sui pianeti nella scena
+const ray=new THREE.Raycaster(), mouse=new THREE.Vector2(); let downAt=null;
+canvas.addEventListener("pointerdown",e=>downAt=[e.clientX,e.clientY]);
+canvas.addEventListener("pointerup",e=>{
+  if(!downAt||Math.hypot(e.clientX-downAt[0],e.clientY-downAt[1])>5) return;
+  mouse.set(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1);
+  ray.setFromCamera(mouse,camera);
+  const hit=ray.intersectObjects([sun,...BODIES.map(b=>b.mesh)])[0];
+  if(hit) select(hit.object===sun?"sole":hit.object.userData.body.id);
+});
+
+function resize(){
+  const w=innerWidth,h=innerHeight;
+  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+addEventListener("resize",()=>{ resize(); if(typeof drawPork==='function') drawPork(mission.plan); }); resize();
+
+// ---------- Pianificatore di missioni ----------
+const MU_SUN = 1.32712440018e11; // km³/s²
+const PHYS = {
+  mercurio:{mu:22032, surf:3.1}, venere:{mu:324859, surf:27}, terra:{mu:398600, surf:9.4},
+  marte:{mu:42828, surf:4.1}, giove:{mu:126686534}, saturno:{mu:37931187},
+  urano:{mu:5793939}, nettuno:{mu:6836529}, plutone:{mu:871, surf:1.0}
+};
+const mission = {from:'terra', to:'marte', dep:'orbita', arr:'orbita', trip:'andata', aero:'motori', plan:null, sim:false, searchJd:jd, custom:null};
+// Pianeti con atmosfera utilizzabile per frenare; valore = ΔV residuo per atterrare col paracadute
+const ATMO = {venere:0, terra:0, marte:0.7, giove:null, saturno:null, urano:null, nettuno:null};
+const byId = id => BODIES.find(b=>b.id===id);
+const lowOrbit = b => b.radius + Math.max(200, b.radius*0.05);
+
+function hohmann(A,B){
+  const r1=A.el[0]*AU_KM, r2=B.el[0]*AU_KM, a=(r1+r2)/2;
+  const v1=Math.sqrt(MU_SUN/r1), v2=Math.sqrt(MU_SUN/r2);
+  const vt1=Math.sqrt(MU_SUN*(2/r1-1/a)), vt2=Math.sqrt(MU_SUN*(2/r2-1/a));
+  return {A, B, vinf1:Math.abs(vt1-v1), vinf2:Math.abs(v2-vt2), tofDays:Math.PI*Math.sqrt(a*a*a/MU_SUN)/86400};
+}
+// Accensione da/verso un’orbita bassa circolare con eccesso iperbolico vinf
+function burn(b, vinf){ const r=lowOrbit(b), mu=PHYS[b.id].mu; return Math.sqrt(vinf*vinf+2*mu/r)-Math.sqrt(mu/r); }
+
+function legSteps(h,dep,arr,aero){
+  const fromId=h.A.id, toId=h.B.id, steps=[];
+  if(dep==='superficie'){
+    if(PHYS[fromId].surf) steps.push({t:`Decollo dalla superficie di ${h.A.name} fino all’orbita bassa`, dv:PHYS[fromId].surf});
+    else steps.push({t:`${h.A.name} non ha una superficie solida: si parte dall’orbita bassa`});
+  }
+  steps.push({t:`Accensione di fuga da ${h.A.name} verso ${h.B.name}`, dv:burn(h.A,h.vinf1), note:`${term('vinf','velocità residua')} ${nf(h.vinf1,2)} km/s`});
+  steps.push({t:'Crociera interplanetaria a motori spenti', time:h.tofDays});
+  if(arr==='sorvolo'){
+    steps.push({t:`Sorvolo di ${h.B.name}`, dv:0, note:`passaggio a ${nf(h.vinf2,2)} km/s, nessuna frenata`});
+  } else {
+    const atm = aero && (toId in ATMO);
+    if(atm) steps.push({t:`Frenata nell’atmosfera di ${h.B.name} fino all’orbita bassa`, dv:0, note:`arrivo a ${nf(h.vinf2,2)} km/s: servono scudo termico e un ingresso preciso`});
+    else steps.push({t:`Frenata e ingresso in orbita bassa attorno a ${h.B.name}`, dv:burn(h.B,h.vinf2), note:`arrivo a ${nf(h.vinf2,2)} km/s`});
+    if(arr==='superficie'){
+      if(PHYS[toId].surf){
+        const useAtm = atm && ATMO[toId]!==null;
+        steps.push({t: useAtm ? `Discesa con paracadute su ${h.B.name}` : `Discesa sulla superficie di ${h.B.name}`, dv: useAtm ? ATMO[toId] : PHYS[toId].surf});
+      }
+      else steps.push({t:`${h.B.name} non ha una superficie solida: la missione resta in orbita`});
+    }
+  }
+  return steps;
+}
+
+function budget(fromId,toId,dep,arr,opts={}){
+  const h = hohmann(byId(fromId), byId(toId));
+  h.steps = legSteps(h, dep, arr, !!opts.aero);
+  if(opts.round){
+    // Il ritorno parte da dove si è arrivati e torna allo stato di partenza
+    h.back = hohmann(byId(toId), byId(fromId));
+    h.backSteps = legSteps(h.back, arr, dep, opts.aero);
+  }
+  h.total = [...h.steps, ...(h.backSteps||[])].reduce((s,x)=>s+(x.dv||0),0);
+  return h;
+}
+
+// ---------- Lambert e propagazione kepleriana (unità interne: UA e giorni) ----------
+const K2 = 0.01720209895*0.01720209895;   // GM del Sole in UA³/giorno²
+const SQK = Math.sqrt(K2);
+const KMS = AU_KM/86400;                    // UA/giorno → km/s
+const dot3=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2], norm3=a=>Math.hypot(a[0],a[1],a[2]);
+const sub3=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+function stumpS(z){ if(z>1e-6){const s=Math.sqrt(z); return (s-Math.sin(s))/(s*s*s);} if(z<-1e-6){const s=Math.sqrt(-z); return (Math.sinh(s)-s)/(s*s*s);} return 1/6-z/120; }
+function stumpC(z){ if(z>1e-6) return (1-Math.cos(Math.sqrt(z)))/z; if(z<-1e-6) return (Math.cosh(Math.sqrt(-z))-1)/(-z); return .5-z/24; }
+
+// Posizione e velocità eliocentriche reali di un pianeta (UA, UA/giorno)
+function stateOf(b,t){
+  const h=.05, p1=helio(b,t+h).p, p0=helio(b,t-h).p;
+  return {r:helio(b,t).p, v:[(p1[0]-p0[0])/(2*h),(p1[1]-p0[1])/(2*h),(p1[2]-p0[2])/(2*h)]};
+}
+
+// Problema di Lambert (variabili universali, verso prograde, meno di un giro)
+function lambert(r1,r2,t){
+  const n1=norm3(r1), n2=norm3(r2);
+  let c=dot3(r1,r2)/(n1*n2); c=Math.max(-1,Math.min(1,c));
+  let th=Math.acos(c); if(r1[0]*r2[1]-r1[1]*r2[0]<0) th=2*Math.PI-th;
+  const A=Math.sin(th)*Math.sqrt(n1*n2/(1-c));
+  if(!isFinite(A)||Math.abs(A)<1e-9) return null;
+  const y=z=>n1+n2+A*(z*stumpS(z)-1)/Math.sqrt(stumpC(z));
+  const F=z=>{ const yz=y(z); if(yz<0) return -Infinity; return Math.pow(yz/stumpC(z),1.5)*stumpS(z)+A*Math.sqrt(yz)-SQK*t; };
+  let lo=-300, hi=4*Math.PI*Math.PI-1e-3;
+  if(!(F(hi)>0) || F(lo)>0) return null;
+  for(let k=0;k<56;k++){ const m=(lo+hi)/2; if(F(m)<0) lo=m; else hi=m; }
+  const yz=y((lo+hi)/2), f=1-yz/n1, g=A*Math.sqrt(yz/K2), gd=1-yz/n2;
+  return {v1:[0,1,2].map(i=>(r2[i]-f*r1[i])/g), v2:[0,1,2].map(i=>(gd*r2[i]-r1[i])/g), th};
+}
+
+// Propagazione kepleriana di uno stato (r0,v0) dopo dt giorni
+function propagate(r0,v0,dt){
+  if(dt<=0) return r0.slice();
+  const R0=norm3(r0), vr0=dot3(r0,v0)/R0, alpha=2/R0-dot3(v0,v0)/K2;
+  let x = alpha>0 ? SQK*alpha*dt : SQK*dt/R0;
+  for(let i=0;i<80;i++){
+    const z=alpha*x*x, C=stumpC(z), S=stumpS(z);
+    const Fx=R0*vr0/SQK*x*x*C+(1-alpha*R0)*x*x*x*S+R0*x-SQK*dt;
+    const dF=R0*vr0/SQK*x*(1-z*S)+(1-alpha*R0)*x*x*C+R0;
+    const d=Fx/dF; x-=d; if(Math.abs(d)<1e-12*Math.max(1,Math.abs(x))) break;
+  }
+  const z=alpha*x*x, f=1-x*x/R0*stumpC(z), g=dt-x*x*x/SQK*stumpS(z);
+  return [0,1,2].map(i=>f*r0[i]+g*v0[i]);
+}
+
+// Costo di una tratta: fuga dall’orbita bassa e, se serve, frenata all’arrivo
+const legCost=(A,B,v1,v2,mode)=>burn(A,v1)+(mode==='burn'?burn(B,v2):0);
+function legAt(A,B,launch,tof,mode){
+  const sa=stateOf(A,launch), sb=stateOf(B,launch+tof);
+  const L=lambert(sa.r,sb.r,tof); if(!L) return null;
+  const vi1=norm3(sub3(L.v1,sa.v))*KMS, vi2=norm3(sub3(L.v2,sb.v))*KMS;
+  return {A,B,launch,tofDays:tof,arrival:launch+tof,vinf1:vi1,vinf2:vi2,r1:sa.r,v1:L.v1,th:L.th,cost:legCost(A,B,vi1,vi2,mode)};
+}
+
+// Ricerca della tratta più economica: griglia data di partenza × durata, poi raffinamento locale
+const legCache=new Map();
+function bestLeg(A,B,fromJd,mode,spanDays){
+  const key=[A.id,B.id,Math.round(fromJd*4),mode,spanDays||0].join('|');
+  if(legCache.has(key)) return legCache.get(key);
+  if(legCache.size>300) legCache.clear();
+  const PA=365.25*Math.pow(A.el[0],1.5), PB=365.25*Math.pow(B.el[0],1.5);
+  const syn=Math.abs(1/(1/PA-1/PB)), Th=hohmann(A,B).tofDays;
+  const span=spanDays||Math.min(syn*1.15, 40*365.25), tMin=Math.max(15,Th*.45), tMax=Th*1.3;
+  const NL=96, NT=44, data=new Float32Array(NL*NT);
+  let best=null;
+  for(let i=0;i<NL;i++){
+    const t0=fromJd+span*i/(NL-1);
+    for(let j=0;j<NT;j++){
+      const l=legAt(A,B,t0,tMin+(tMax-tMin)*j/(NT-1),mode);
+      data[j*NL+i]=l?l.cost:NaN;
+      if(l&&(!best||l.cost<best.cost)) best=l;
+    }
+  }
+  if(best){
+    let dl=span/(NL-1), dt=(tMax-tMin)/(NT-1), guard=0;
+    for(let k=0;k<12;k++){
+      let imp=true;
+      while(imp && guard++<400){
+        imp=false;
+        for(const [a,b] of [[dl,0],[-dl,0],[0,dt],[0,-dt],[dl,dt],[-dl,-dt],[dl,-dt],[-dl,dt]]){
+          const L2=best.launch+a, T2=best.tofDays+b;
+          if(L2<fromJd||L2>fromJd+span||T2<tMin||T2>tMax) continue;
+          const l=legAt(A,B,L2,T2,mode);
+          if(l&&l.cost<best.cost-1e-9){best=l;imp=true;}
+        }
+      }
+      dl/=2; dt/=2;
+    }
+    Object.assign(best,{syn, grid:{data,NL,NT,t0:fromJd,span,tMin,tMax}});
+  }
+  legCache.set(key,best);
+  return best;
+}
+
+// Piano completo con date: lancio, arrivo e, se serve, sosta e finestra di ritorno
+function makePlan(fromId,toId,custom){
+  const A=byId(fromId), B=byId(toId);
+  const round=mission.trip==='ritorno', aero=mission.aero==='atmosfera';
+  const outMode=mission.arr==='sorvolo'||(aero&&(toId in ATMO))?'none':'burn';
+  const best=bestLeg(A,B,mission.searchJd,outMode); if(!best) return null;
+  let out=best;
+  if(custom){ const c=legAt(A,B,custom.launch,custom.tof,outMode); if(c) out=Object.assign(c,{syn:best.syn,grid:best.grid}); }
+  const p=Object.assign({},out,{best,custom:out!==best});
+  p.steps=legSteps(p,mission.dep,mission.arr,aero);
+  p.at=t=>propagate(out.r1,out.v1,t);
+  p.phi=wrapPi(lonOf(B,p.launch)-lonOf(A,p.launch));
+  if(round){
+    const backMode=aero&&(fromId in ATMO)?'none':'burn';
+    const b=bestLeg(B,A,p.arrival,backMode); if(!b) return null;
+    p.back=Object.assign({},b,{at:t=>propagate(b.r1,b.v1,t)});
+    p.backSteps=legSteps(p.back,mission.arr,mission.dep,aero);
+    p.stay=p.back.launch-p.arrival; p.end=p.back.arrival;
+  } else p.end=p.arrival;
+  p.total=[...p.steps,...(p.backSteps||[])].reduce((s,x)=>s+(x.dv||0),0);
+  p.ideal=budget(fromId,toId,mission.dep,mission.arr,{round,aero}).total;
+  return p;
+}
+
+function wrapPi(x){ x=(x+Math.PI)%(2*Math.PI); if(x<0) x+=2*Math.PI; return x-Math.PI; }
+const lonOf = (b,t) => { const p=helio(b,t).p; return Math.atan2(p[1],p[0]); };
+
+// Oggetti 3D della missione
+const trajGeo = new THREE.BufferGeometry();
+trajGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(301*3),3));
+const trajLine = new THREE.Line(trajGeo, new THREE.LineBasicMaterial({color:0xF2CE7A}));
+trajLine.visible=false; scene.add(trajLine);
+const backGeo = new THREE.BufferGeometry();
+backGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(301*3),3));
+const backLine = new THREE.Line(backGeo, new THREE.LineBasicMaterial({color:0x8FC7E8}));
+backLine.visible=false; scene.add(backLine);
+const probe = new THREE.Mesh(new THREE.OctahedronGeometry(.9), new THREE.MeshBasicMaterial({color:0xFFF3C4}));
+probe.visible=false; scene.add(probe);
+const probeLbl = document.createElement('div');
+probeLbl.className='lbl sel'; probeLbl.textContent='Sonda'; probeLbl.style.pointerEvents='none'; probeLbl.style.display='none';
+labelsEl.appendChild(probeLbl);
+const marker = c => { const m=new THREE.Mesh(new THREE.RingGeometry(1.3,1.75,40), new THREE.MeshBasicMaterial({color:c,side:THREE.DoubleSide})); m.rotation.x=-Math.PI/2; m.visible=false; scene.add(m); return m; };
+const mkStart = marker(0x7FD1A8), mkEnd = marker(0xF2CE7A);
+
+function drawTrajectory(){
+  const p=mission.plan;
+  backLine.visible = false;
+  if(!p){ trajLine.visible=mkStart.visible=mkEnd.visible=false; return; }
+  const fill=(geo,leg)=>{
+    const arr=geo.attributes.position.array;
+    for(let i=0;i<=300;i++){ const v=toScene(leg.at(i/300*leg.tofDays)); arr[i*3]=v.x; arr[i*3+1]=v.y; arr[i*3+2]=v.z; }
+    geo.attributes.position.needsUpdate=true; geo.computeBoundingSphere();
+  };
+  fill(trajGeo,p);
+  if(p.back){ fill(backGeo,p.back); backLine.visible=true; }
+  mkStart.position.copy(toScene(p.at(0))); mkEnd.position.copy(toScene(p.at(p.tofDays)));
+  trajLine.visible=mkStart.visible=mkEnd.visible=true;
+}
+
+const fmtDur = d => d < 365.25*1.5 ? `${Math.round(d)} giorni` : `${nf(d/365.25,1)} anni`;
+const fmtJd = t => fmtDate.format(new Date(msFromJd(t)));
+// Preposizione articolata davanti a una data: «dall’8 marzo», «al 12 maggio»
+const ELIDE={il:'l’',dal:'dall’',al:'all’',del:'dell’'};
+const pd = (prep,t) => { const d=fmtJd(t); return (/^(8|11) /.test(d) ? ELIDE[prep] : prep+' ') + d; };
+const fmtShortI = new Intl.DateTimeFormat('it-IT',{month:'short',year:'numeric'});
+const fmtShort = t => fmtShortI.format(new Date(msFromJd(t)));
+
+function plan(){
+  syncChips();
+  if(mission.from===mission.to){ mission.plan=null; drawTrajectory(); renderRoute(); renderAlternatives(); return; }
+  const p = makePlan(mission.from, mission.to, mission.custom);
+  if(p && !p.custom) mission.custom = null;
+  mission.plan = p; mission.sim = false;
+  drawTrajectory(); renderRoute(); renderAlternatives();
+}
+
+// Coerenza tra le opzioni: il ritorno non ha senso dopo un semplice sorvolo
+function syncChips(){
+  const round = mission.trip==='ritorno';
+  if(round && mission.arr==='sorvolo') mission.arr='orbita';
+  document.querySelectorAll('[data-arr]').forEach(x=>{ x.classList.toggle('on', x.dataset.arr===mission.arr); if(x.dataset.arr==='sorvolo') x.disabled=round; });
+  $('aeroRow').hidden = !(((mission.to in ATMO) && mission.arr!=='sorvolo') || (round && (mission.from in ATMO)));
+  ['trip','dep','aero'].forEach(k=>document.querySelectorAll(`[data-${k}]`).forEach(x=>x.classList.toggle('on',x.dataset[k]===mission[k])));
+}
+
+function renderRoute(){
+  const el=$('route'), p=mission.plan;
+  if(!p){ el.innerHTML = mission.from===mission.to ? '<p class="empty">Scegli due pianeti diversi per calcolare il percorso.</p>' : '<p class="empty">Nessuna traiettoria diretta trovata in questo intervallo.</p>'; return; }
+  const g=p.grid;
+  const li = s => `<li><span>${s.t}${s.note?`<small>${s.note}</small>`:''}</span><b>${s.time!==undefined ? fmtDur(s.time) : s.dv!==undefined ? nf(s.dv,2)+' km/s' : '—'}</b></li>`;
+  const round = !!p.back;
+  let steps = round ? `<li class="leg">Andata</li>` : '';
+  steps += p.steps.map(li).join('');
+  if(round){
+    steps += `<li class="stay"><span>Sosta tattica su ${p.B.name}<small>Si aspetta che ${p.A.name} torni nella posizione giusta: ripartire prima costerebbe molto più ΔV. ${pd('dal',p.arrival).replace(/^d/,'D')} ${pd('al',p.back.launch)}.</small></span><b>${fmtDur(p.stay)}</b></li>`;
+    steps += `<li class="leg">Ritorno</li>` + p.backSteps.map(li).join('');
+  }
+  el.innerHTML = `
+    <div class="summary"><div><span class="big">${nf(p.total,2)}</span><span class="unit">km/s di ${term('dv','ΔV')}</span></div><div class="dur">${fmtDur(p.end-p.launch)}${round?' in tutto':''}</div></div>
+    <ol class="steps">${steps}</ol>
+    <dl class="win">
+      <dt>Prossimo lancio</dt><dd class="launch">${fmtJd(p.launch)}</dd>
+      <dt>Arrivo su ${p.B.name}</dt><dd>${fmtJd(p.arrival)}</dd>
+      ${round ? `<dt>Partenza per il ritorno</dt><dd class="launch">${fmtJd(p.back.launch)}</dd>
+      <dt>Rientro su ${p.A.name}</dt><dd>${fmtJd(p.back.arrival)}</dd>` : ''}
+      <dt>${term('tipo','Traiettoria')}</dt><dd>${p.th<Math.PI?'tipo I (arco corto)':'tipo II (arco lungo)'}</dd>
+      <dt>${term('c3','Energia di lancio C3')}</dt><dd>${nf(p.vinf1*p.vinf1,1)} km²/s²</dd>
+      <dt>${term('fase','Angolo di fase al lancio')}</dt><dd>${nf(p.phi/D2R,1)}°</dd>
+      <dt>${term('sinodico','Una finestra ogni')}</dt><dd>${fmtDur(p.syn)}</dd>
+      <dt>${term('hohmann','Con orbite ideali')}</dt><dd>${nf(p.ideal,2)} km/s</dd>
+    </dl>
+    <div class="pork">
+      <div class="pork-head"><span>${term('porkchop','Mappa delle finestre')}</span>${p.custom?'<button id="bestBtn">Torna alla migliore</button>':''}</div>
+      <canvas id="porkC" role="img" aria-label="Mappa del ΔV in funzione della data di partenza e della durata del viaggio"></canvas>
+      <div class="pork-ax"><span>${fmtShort(g.t0)}</span><span>data di partenza</span><span>${fmtShort(g.t0+g.span)}</span></div>
+      <p class="pork-cap">In verticale la durata del viaggio, da ${fmtDur(g.tMin)} in basso a ${fmtDur(g.tMax)} in alto. Più il colore è chiaro, meno ΔV serve. Tocca la mappa per provare un’altra combinazione.</p>
+    </div>
+    <div class="row"><button id="goLaunch">Vai al lancio</button><button id="simulate" class="on">Simula il viaggio</button></div>`;
+  $('goLaunch').onclick = () => { jd=p.launch; playing=false; mission.sim=false; rebuildOrbits(jd); lastOrbitJd=jd; updateSpeedUI(); };
+  $('simulate').onclick = () => {
+    jd=p.launch; rebuildOrbits(jd); lastOrbitJd=jd; mission.sim=true; playing=true;
+    const target=(p.end-p.launch)/14; let bi=SPEEDS.indexOf(1);
+    SPEEDS.forEach((s,i)=>{ if(s>0 && Math.abs(Math.log(s/target))<Math.abs(Math.log(SPEEDS[bi]/target))) bi=i; });
+    speedIdx=bi; updateSpeedUI();
+  };
+  if($('bestBtn')) $('bestBtn').onclick = () => { mission.custom=null; plan(); };
+  const cv=$('porkC');
+  cv.onclick = e => {
+    const r=cv.getBoundingClientRect(), fx=(e.clientX-r.left)/r.width, fy=1-(e.clientY-r.top)/r.height;
+    mission.custom={launch:g.t0+fx*g.span, tof:g.tMin+fy*(g.tMax-g.tMin)}; plan();
+  };
+  drawPork(p);
+}
+
+// Porkchop plot: ΔV della sola andata per ogni coppia data di partenza × durata
+const PORK = [[242,206,122],[214,140,72],[168,74,62],[84,42,72],[24,32,54]];
+function drawPork(p){
+  const cv=$('porkC'); if(!cv||!p) return;
+  const g=p.grid, W=cv.clientWidth, H=cv.clientHeight, dpr=Math.min(devicePixelRatio,2);
+  if(!W||!H) return;
+  cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
+  const x=cv.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0);
+  const min=p.best.cost, range=Math.max(1.6*min,3);
+  const col=v=>{
+    if(!isFinite(v)) return 'rgb(14,20,34)';
+    let s=Math.min(1,(v-min)/range); s=Math.min(.999,Math.floor(s*10)/10);
+    const f=s*(PORK.length-1), i=Math.floor(f), u=f-i;
+    return 'rgb('+PORK[i].map((a,k)=>Math.round(a+(PORK[i+1][k]-a)*u)).join(',')+')';
+  };
+  const cw=W/g.NL, ch=H/g.NT;
+  for(let j=0;j<g.NT;j++) for(let i=0;i<g.NL;i++){ x.fillStyle=col(g.data[j*g.NL+i]); x.fillRect(i*cw,H-(j+1)*ch,cw+.7,ch+.7); }
+  const pos=(t,tof)=>[Math.min(W-3,Math.max(3,(t-g.t0)/g.span*W)), Math.min(H-3,Math.max(3,H-(tof-g.tMin)/(g.tMax-g.tMin)*H))];
+  if(p.custom){ const [bx,by]=pos(p.best.launch,p.best.tofDays); x.fillStyle='#fff'; x.beginPath(); x.arc(bx,by,2.5,0,7); x.fill(); }
+  const [px,py]=pos(p.launch,p.tofDays);
+  x.lineWidth=2; x.strokeStyle='#fff'; x.beginPath(); x.arc(px,py,6,0,7); x.stroke();
+  x.lineWidth=1; x.strokeStyle='rgba(0,0,0,.6)'; x.beginPath(); x.arc(px,py,8,0,7); x.stroke();
+}
+
+function renderAlternatives(){
+  const el=$('alts'), from=byId(mission.from);
+  const rows = BODIES.filter(b=>b.id!==mission.from).map(b=>({b, r:makePlan(mission.from,b.id)}));
+  el.innerHTML = `<h2>Da ${from.name} verso…</h2>` + rows.map(({b,r})=>
+    `<button class="alt${b.id===mission.to?' on':''}" data-id="${b.id}"><span class="dot" style="background:${b.color}"></span><span>${b.name}</span><span class="v">${r?nf(r.total,1)+' km/s':'—'}</span><span class="t">${r?fmtDur(r.end-r.launch):''}</span></button>`).join('');
+  el.querySelectorAll('button').forEach(x=>x.onclick=()=>{ mission.custom=null; mission.to=x.dataset.id; $('toSel').value=mission.to; plan(); });
+}
+
+(function initPlanner(){
+  const fromSel=$('fromSel'), toSel=$('toSel');
+  BODIES.forEach(b=>{ fromSel.add(new Option(b.name,b.id)); toSel.add(new Option(b.name,b.id)); });
+  fromSel.value=mission.from; toSel.value=mission.to;
+  fromSel.onchange=()=>{ mission.custom=null; mission.from=fromSel.value; plan(); };
+  toSel.onchange=()=>{ mission.custom=null; mission.to=toSel.value; plan(); };
+  $('swap').onclick=()=>{ mission.custom=null; [mission.from,mission.to]=[mission.to,mission.from]; fromSel.value=mission.from; toSel.value=mission.to; plan(); };
+  const chips=(attr,key)=>document.querySelectorAll(`[data-${attr}]`).forEach(btn=>btn.onclick=()=>{
+    mission[key]=btn.dataset[attr];
+    document.querySelectorAll(`[data-${attr}]`).forEach(x=>x.classList.toggle('on',x===btn));
+    plan();
+  });
+  chips('dep','dep'); chips('arr','arr'); chips('trip','trip'); chips('aero','aero');
+  $('replan').onclick=()=>{ mission.custom=null; mission.searchJd=jd; plan(); };
+  plan();
+})();
+
+// ---------- Pannelli riducibili ----------
+const PANELS = {esplora:$('panel'), percorsi:$('routePanel'), impara:$('imparaPanel')};
+const isMobile = () => matchMedia('(max-width:640px)').matches;
+let zTop = 20, savedOpen = null;
+function bringFront(el){ el.style.zIndex = ++zTop; }
+function isOpen(n){ return !PANELS[n].classList.contains('closed'); }
+function setPanel(name, open){
+  if(open && isMobile()) Object.keys(PANELS).forEach(n=>{ if(n!==name) PANELS[n].classList.add('closed'); });
+  PANELS[name].classList.toggle('closed', !open);
+  if(open){ bringFront(PANELS[name]); savedOpen = null; }
+  syncDock();
+  if(open && name==='percorsi') drawPork(mission.plan);
+  if(open && name==='impara' && curTab==='keplero') drawKPlot();
+}
+// Dalle lezioni: su telefono non si chiude la lezione, si evidenzia il pulsante del pannello
+function peek(n){
+  if(!isMobile()){ setPanel(n,true); return; }
+  const b=document.querySelector(`[data-open="${n}"]`); b.classList.add('pulse'); setTimeout(()=>b.classList.remove('pulse'),2200);
+}
+function syncDock(){
+  document.querySelectorAll('[data-open]').forEach(b=>{ const o=isOpen(b.dataset.open); b.classList.toggle('on',o); b.setAttribute('aria-pressed',String(o)); });
+  const any = Object.keys(PANELS).some(isOpen);
+  $('hideAll').textContent = any ? 'Solo 3D' : 'Mostra pannelli';
+}
+function toggleAll(){
+  const open = Object.keys(PANELS).filter(isOpen);
+  if(open.length){ savedOpen = open; open.forEach(n=>PANELS[n].classList.add('closed')); syncDock(); }
+  else (savedOpen || (isMobile()?['impara']:['esplora','impara'])).forEach(n=>setPanel(n,true));
+}
+document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>setPanel(b.dataset.open, !isOpen(b.dataset.open)));
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>setPanel(b.dataset.close, false));
+Object.values(PANELS).forEach(p=>p.addEventListener('pointerdown',()=>bringFront(p)));
+$('hideAll').onclick = toggleAll;
+addEventListener('keydown',e=>{
+  if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)||e.ctrlKey||e.metaKey||e.altKey) return;
+  if(e.key.toLowerCase()==='h') toggleAll();
+});
+
+// ---------- Comandi usati dalle lezioni ----------
+function goToday(){ jd=jdFromMs(Date.now()); rebuildOrbits(jd); lastOrbitJd=jd; }
+function goJd(t){ jd=t; rebuildOrbits(jd); lastOrbitJd=jd; }
+function runAt(d){ const i=SPEEDS.indexOf(d); speedIdx = i<0 ? SPEEDS.indexOf(7) : i; playing=true; mission.sim=false; updateSpeedUI(); }
+function pause(){ playing=false; mission.sim=false; updateSpeedUI(); }
+function viewFrom(dist){
+  const dir=camera.position.clone().sub(controls.target);
+  if(dir.lengthSq()<1e-6) dir.set(0,.6,.8);
+  dir.normalize(); if(dir.y<.35){ dir.y=.5; dir.normalize(); }
+  camera.position.copy(controls.target).add(dir.multiplyScalar(dist));
+}
+function setMissionUI(o){
+  Object.assign(mission,{custom:null},o);
+  $('fromSel').value=mission.from; $('toSel').value=mission.to;
+  plan();
+}
+function frameOrbit(id){ const b=byId(id); select('sole'); viewFrom(sceneR(b.el[0]*(1+b.el[1]))*3+4); }
+
+// ---------- Keplero: perielio, afelio e aree uguali nella scena ----------
+const kep = {planet:'mercurio', apsides:false, areas:false, group:new THREE.Group()};
+scene.add(kep.group);
+const kepPts=[new THREE.Vector3(), new THREE.Vector3()];
+const kepLbl=['Perielio','Afelio'].map(t=>{ const l=document.createElement('div'); l.className='lbl kep'; l.textContent=t; l.style.pointerEvents='none'; l.style.display='none'; labelsEl.appendChild(l); return l; });
+const periodDays = b => 365.25*Math.pow(elementsAt(b,jd)[0],1.5);
+function periTime(b,t){
+  const [a,,,L,wbar]=elementsAt(b,t), P=365.25*Math.pow(a,1.5);
+  const M=((L-wbar)%360+360)%360;
+  return t - M/360*P;
+}
+function rebuildKepler(){
+  while(kep.group.children.length){ const c=kep.group.children.pop(); c.geometry.dispose(); c.material.dispose(); }
+  if(!kep.apsides && !kep.areas) return;
+  const b=byId(kep.planet), P=periodDays(b), tp=periTime(b,jd);
+  if(kep.areas){
+    const N=12, S=24;
+    for(let k=0;k<N;k++){
+      const pts=[]; for(let s=0;s<=S;s++) pts.push(toScene(helio(b,tp+(k+s/S)*P/N).p));
+      const v=new Float32Array(S*9);
+      for(let s=0;s<S;s++){ v.set([0,0,0, pts[s].x,pts[s].y,pts[s].z, pts[s+1].x,pts[s+1].y,pts[s+1].z], s*9); }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(v,3));
+      kep.group.add(new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:k%2?0x4F8FD9:0xD2AE62,transparent:true,opacity:.3,side:THREE.DoubleSide,depthWrite:false})));
+      kep.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),pts[0]]),new THREE.LineBasicMaterial({color:0xE9E4D3,transparent:true,opacity:.45})));
+    }
+  }
+  if(kep.apsides){
+    const ph=toScene(helio(b,tp).p), ap=toScene(helio(b,tp+P/2).p);
+    kepPts[0].copy(ph); kepPts[1].copy(ap);
+    kep.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([ph,ap]),new THREE.LineBasicMaterial({color:0xF2CE7A,transparent:true,opacity:.7})));
+    [ph,ap].forEach(p=>{ const m=new THREE.Mesh(new THREE.SphereGeometry(.45,16,12),new THREE.MeshBasicMaterial({color:0xF2CE7A})); m.position.copy(p); kep.group.add(m); });
+  }
+}
+function setKepler(o){
+  Object.assign(kep,o);
+  if(kep.areas && scaleMode!=='real') setScale('real');
+  rebuildKepler(); renderKepler();
+}
+
+// ---------- Glossario ----------
+const GLOSS = [
+  ['ua','Unità astronomica (UA)','La distanza media tra Terra e Sole: 149.597.870,7 km. È comoda per misurare le distanze nel Sistema Solare.'],
+  ['minluce','Minuto luce','La distanza che la luce percorre in un minuto, circa 18 milioni di km. Il Sole è a circa 8,3 minuti luce dalla Terra.'],
+  ['elementi','Elementi orbitali','Sei numeri che descrivono un’orbita: forma (semiasse maggiore ed eccentricità), orientamento nello spazio (inclinazione, nodo, perielio) e posizione del pianeta in un certo istante.'],
+  ['semiasse','Semiasse maggiore','Metà dell’asse più lungo dell’ellisse. È la distanza media dal Sole e da sola determina il periodo orbitale (terza legge di Keplero).'],
+  ['eccentricita','Eccentricità','Quanto un’orbita è schiacciata: 0 è un cerchio perfetto, valori vicini a 1 indicano un’ellisse molto allungata. Terra 0,017; Mercurio 0,21; Plutone 0,25.'],
+  ['perielio','Perielio e afelio','Il perielio è il punto dell’orbita più vicino al Sole, l’afelio il più lontano. La Terra passa al perielio all’inizio di gennaio e all’afelio all’inizio di luglio.'],
+  ['inclinazione','Inclinazione','L’angolo tra il piano dell’orbita di un pianeta e l’eclittica. Quasi tutti i pianeti stanno entro pochi gradi; Plutone arriva a 17°.'],
+  ['eclittica','Eclittica','Il piano dell’orbita terrestre, usato come riferimento. Nella scena è rappresentato dalla griglia circolare.'],
+  ['periodo','Periodo orbitale','Il tempo che un pianeta impiega a fare un giro completo attorno al Sole: 88 giorni Mercurio, 1 anno la Terra, quasi 165 anni Nettuno.'],
+  ['velocita','Velocità orbitale','La velocità di un pianeta rispetto al Sole. Non è costante: è massima al perielio e minima all’afelio (seconda legge di Keplero).'],
+  ['keplero','Leggi di Keplero','1ª: le orbite sono ellissi con il Sole in uno dei fuochi. 2ª: la linea Sole–pianeta spazza aree uguali in tempi uguali. 3ª: il quadrato del periodo è proporzionale al cubo del semiasse maggiore (T² = a³ con T in anni e a in UA).'],
+  ['sinodico','Periodo sinodico','Il tempo dopo cui due pianeti tornano nella stessa posizione reciproca rispetto al Sole. Si calcola con 1/S = |1/T₁ − 1/T₂|. Per Terra e Marte è circa 26 mesi: ecco perché le finestre di lancio si ripetono con quel ritmo.'],
+  ['opposizione','Opposizione e congiunzione','Un pianeta esterno è in opposizione quando Terra e Sole sono allineati con lui dalla stessa parte: è più vicino e visibile tutta la notte. È in congiunzione quando si trova dietro il Sole.'],
+  ['fase','Angolo di fase','L’angolo, visto dal Sole, tra la Terra e il pianeta di arrivo al momento del lancio. Ogni trasferimento richiede un angolo preciso, così la sonda e il pianeta arrivano nello stesso punto nello stesso momento.'],
+  ['dv','ΔV (delta-v)','La variazione di velocità che i motori devono fornire. È la «moneta» dei viaggi spaziali: più ΔV significa più propellente, e per l’equazione del razzo di Ciolkovskij la massa di propellente cresce in modo esponenziale con il ΔV.'],
+  ['vinf','Velocità residua (v∞)','La velocità rispetto a un pianeta quando la sonda è ormai lontana dalla sua attrazione. Alla partenza è quanto «avanza» dopo la fuga, all’arrivo è la velocità con cui ci si avvicina.'],
+  ['c3','Energia di lancio C3','Il quadrato della velocità residua alla partenza, in km²/s². Le prestazioni dei lanciatori si danno così: quanta massa possono spedire per un certo C3.'],
+  ['orbitabassa','Orbita bassa','Un’orbita circolare poco sopra la superficie o l’atmosfera, qui a 200 km di quota (5% del raggio per i giganti gassosi). È il punto di partenza tipico delle missioni.'],
+  ['oberth','Effetto Oberth','Accendere i motori dove si va già veloci, cioè vicino a un pianeta, rende di più. Per questo conviene accelerare dall’orbita bassa invece che lontano dalla Terra.'],
+  ['hohmann','Trasferimento di Hohmann','Il modo più economico per passare tra due orbite circolari e complanari: mezza ellisse che tocca entrambe. È un modello ideale, utile come confronto.'],
+  ['lambert','Problema di Lambert','Trovare l’orbita che collega due punti dello spazio in un tempo dato. Qui lo si risolve tra la posizione della Terra alla partenza e quella del pianeta all’arrivo.'],
+  ['tipo','Traiettoria tipo I e tipo II','Una traiettoria di tipo I percorre meno di mezzo giro attorno al Sole, una di tipo II più di mezzo giro. A volte la seconda costa meno, pur durando di più.'],
+  ['porkchop','Mappa delle finestre (porkchop plot)','Un grafico del ΔV in funzione della data di partenza e della durata del viaggio. Le zone di minimo hanno spesso la forma di una braciola, da cui il nome inglese.'],
+  ['finestra','Finestra di lancio','Il periodo in cui la posizione dei pianeti permette di partire con poco ΔV. Fuori dalla finestra il viaggio diventa molto più costoso o impossibile.'],
+  ['fionda','Fionda gravitazionale','Un passaggio ravvicinato a un pianeta che cambia velocità e direzione della sonda senza consumare propellente. Voyager, Cassini e New Horizons ne hanno usate diverse.'],
+  ['aerofrenata','Frenata atmosferica','Usare l’attrito con l’atmosfera di un pianeta per rallentare invece dei motori. Richiede uno scudo termico e un ingresso molto preciso.'],
+  ['galileiani','Satelliti galileiani','Io, Europa, Ganimede e Callisto, le quattro lune maggiori di Giove, scoperte da Galileo nel 1610.']
+];
+function renderGlossary(f=''){
+  const q=f.trim().toLowerCase();
+  $('glist').innerHTML = GLOSS.filter(g=>!q || (g[1]+' '+g[2]).toLowerCase().includes(q))
+    .map(g=>`<div id="g-${g[0]}"><dt>${g[1]}</dt><dd>${g[2]}</dd></div>`).join('') || '<p class="warn">Nessun termine trovato.</p>';
+}
+$('gsearch').addEventListener('input',e=>renderGlossary(e.target.value));
+function openTerm(k){
+  setPanel('impara',true); showTab('glossario');
+  $('gsearch').value=''; renderGlossary();
+  const el=$('g-'+k); if(!el) return;
+  el.scrollIntoView({block:'center',behavior:'smooth'});
+  el.classList.add('hl'); setTimeout(()=>el.classList.remove('hl'),1800);
+}
+document.addEventListener('pointerdown',e=>{ const t=e.target.closest&&e.target.closest('.term'); if(t){ e.preventDefault(); openTerm(t.dataset.term); } });
+document.addEventListener('click',e=>{ const t=e.target.closest&&e.target.closest('.term'); if(t && e.detail===0) openTerm(t.dataset.term); });
+
+// ---------- Schede ----------
+let curTab='lezioni';
+function showTab(t){
+  curTab=t;
+  document.querySelectorAll('[data-tab]').forEach(b=>{ const on=b.dataset.tab===t; b.classList.toggle('on',on); b.setAttribute('aria-selected',String(on)); });
+  document.querySelectorAll('#imparaPanel .pane').forEach(p=>p.hidden = p.id!=='tab-'+t);
+  if(t==='keplero') renderKepler();
+  if(t==='quiz' && !quiz) startQuiz();
+}
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+
+// ---------- Lezioni ----------
+const LESSONS = [
+ {t:'Un giro nel Sistema Solare', d:'Posizioni reali, unità astronomica, distanze e tempi della luce.', steps:[
+  {h:'I pianeti oggi', p:`<p>Questa è la posizione reale dei pianeti nella data mostrata. Il Sole è al centro, le linee colorate sono le orbite e la griglia è il piano dell’orbita terrestre, l’${term('eclittica','eclittica')}.</p><p>Le posizioni sono calcolate con gli ${term('elementi','elementi orbitali')} pubblicati dal JPL della NASA. I pianeti sono disegnati molto più grandi del vero, altrimenti sarebbero invisibili.</p>`,
+   act:['Mostra il Sistema Solare oggi',()=>{ pause(); goToday(); setScale('comp'); setKepler({apsides:false,areas:false}); select('sole'); viewFrom(230); }]},
+  {h:'La distanza Terra–Sole', p:`<p>Segui la Terra e guarda la scheda nel pannello Sistema Solare. La distanza dal Sole è di circa 1 ${term('ua','unità astronomica')}: circa 150 milioni di km.</p>`,
+   act:['Segui la Terra',()=>{ pause(); peek('esplora'); select('terra'); }],
+   ask:['Perché la distanza Terra–Sole non è sempre esattamente 1 UA?','Perché l’orbita è un’ellisse leggermente schiacciata (eccentricità 0,017). All’inizio di gennaio la Terra è al perielio, all’inizio di luglio all’afelio, circa 5 milioni di km più lontana.']},
+  {h:'Il tempo scorre', p:`<p>Ora il tempo scorre a 30 giorni al secondo. Osserva quanto velocemente si muovono i diversi pianeti. Puoi cambiare velocità con i tasti ◀ e ▶ nel pannello Sistema Solare.</p>`,
+   act:['Fai scorrere il tempo',()=>{ select('sole'); viewFrom(160); runAt(30); }],
+   ask:['Quale pianeta si muove più in fretta e quale più lentamente? Perché?','Mercurio è il più veloce (un giro in 88 giorni), Nettuno quasi non si muove (165 anni). Più un pianeta è lontano, più è lento e più lunga è la strada da fare: è la terza legge di Keplero.']},
+  {h:'Le distanze vere', p:`<p>In scala reale le distanze sono proporzionali a quelle vere. I pianeti interni si ammassano vicino al Sole: usa la rotella o il pizzico per ingrandire.</p><p>La luce del Sole arriva sulla Terra in circa 8 minuti e su Nettuno in oltre 4 ore. Nella scheda di ogni pianeta trovi quanto impiega la luce a raggiungerlo dalla Terra.</p>`,
+   act:['Passa alla scala reale',()=>{ pause(); setScale('real'); select('sole'); viewFrom(2300); }],
+   ask:['Perché un rover su Marte non si può guidare con un joystick dalla Terra?','Perché un segnale radio, che viaggia alla velocità della luce, impiega tra 3 e 22 minuti a raggiungere Marte, a seconda di dove si trovano i due pianeti. I rover ricevono istruzioni e le eseguono da soli.']}
+ ]},
+ {t:'Le leggi di Keplero', d:'Orbite ellittiche, aree uguali in tempi uguali e la relazione tra distanza e periodo.', steps:[
+  {h:'Prima legge: orbite ellittiche', p:`<p>Le orbite sono ellissi e il Sole occupa uno dei due fuochi. Quella di Mercurio è la più schiacciata tra i pianeti: al ${term('perielio','perielio')} dista circa 46 milioni di km dal Sole, all’afelio circa 70.</p>`,
+   act:['Mostra perielio e afelio di Mercurio',()=>{ pause(); setScale('comp'); setKepler({planet:'mercurio',apsides:true,areas:false}); frameOrbit('mercurio'); }],
+   ask:['Anche l’orbita della Terra è un’ellisse. Perché a occhio sembra un cerchio?','La sua eccentricità è solo 0,017: perielio e afelio differiscono di circa 5 milioni di km su 150, troppo poco per accorgersene guardando.']},
+  {h:'Seconda legge: aree uguali', p:`<p>Ogni spicchio colorato è il tratto percorso da Mercurio in un dodicesimo del suo periodo, circa 7 giorni e mezzo. Gli spicchi hanno tutti la stessa area: vicino al Sole sono corti e larghi, lontano lunghi e stretti.</p><p class="warn">Le aree sono uguali solo in scala reale, per questo la vista cambia scala.</p>`,
+   act:['Mostra le aree uguali',()=>{ pause(); setKepler({planet:'mercurio',apsides:true,areas:true}); frameOrbit('mercurio'); }],
+   ask:['Allora in quale punto Mercurio va più veloce?','Al perielio: nello stesso tempo deve percorrere un arco più lungo per spazzare la stessa area. È la seconda legge di Keplero, che vale per tutti i pianeti.']},
+  {h:'La velocità cambia', p:`<p>Segui Mercurio e guarda la ${term('velocita','velocità orbitale')} nel pannello Sistema Solare mentre il tempo scorre. Varia tra circa 39 km/s all’afelio e 59 km/s al perielio.</p>`,
+   act:['Segui Mercurio nel tempo',()=>{ peek('esplora'); select('mercurio'); runAt(1); }],
+   ask:['Anche la Terra cambia velocità? Quando è più veloce?','Sì, tra circa 29,3 e 30,3 km/s. È più veloce all’inizio di gennaio, quando è al perielio.']},
+  {h:'Terza legge: distanza e periodo', p:`<p>Più un pianeta è lontano, più è lungo il suo anno, secondo una regola precisa. Con il periodo T in anni e il ${term('semiasse','semiasse maggiore')} a in UA:</p><div class="formula">T² = a³</div><p>Nella scheda Keplero trovi la tabella e il grafico con i dati di tutti i pianeti.</p>`,
+   act:['Apri la scheda Keplero',()=>{ pause(); setKepler({apsides:false,areas:false}); setScale('comp'); select('sole'); viewFrom(230); showTab('keplero'); }],
+   ask:['Un asteroide ha a = 4 UA. Quanto dura il suo anno?','T² = 4³ = 64, quindi T = 8 anni.']}
+ ]},
+ {t:'Perché per Marte si parte ogni 26 mesi', d:'Finestre di lancio, angolo di fase, mappa delle finestre e periodo sinodico.', steps:[
+  {h:'Non si punta dritto', p:`<p>Per raggiungere Marte spendendo poco, la sonda non punta verso il pianeta. Viaggia su un’orbita attorno al Sole che tocca l’orbita di Marte proprio quando Marte arriva in quel punto.</p><p>Il pannello Percorsi mostra la prossima ${term('finestra','finestra di lancio')} e il ${term('dv','ΔV')} necessario.</p>`,
+   act:['Pianifica Terra → Marte',()=>{ pause(); goToday(); setScale('comp'); setKepler({apsides:false,areas:false}); setMissionUI({from:'terra',to:'marte',trip:'andata',dep:'orbita',arr:'orbita',aero:'motori',searchJd:jd}); peek('percorsi'); select('sole'); viewFrom(200); }]},
+  {h:'La mappa delle finestre', p:`<p>Nel pannello Percorsi guarda la ${term('porkchop','mappa delle finestre')}: in orizzontale c’è la data di partenza, in verticale la durata del viaggio. Le macchie chiare sono le finestre e si ripetono a circa 26 mesi di distanza.</p><p>Tocca la mappa in punti diversi e guarda come cambiano ΔV e traiettoria.</p>`,
+   act:['Apri il pannello Percorsi',()=>{ peek('percorsi'); }],
+   ask:['Cosa succede se parti a metà tra due finestre?','Il ΔV diventa enorme: Marte si trova dalla parte sbagliata del Sole e per raggiungerlo servirebbe un’orbita molto più costosa.']},
+  {h:'Il viaggio', p:`<p>Simula il viaggio: la sonda parte dalla Terra e incontra Marte nel punto d’arrivo. Durante il viaggio entrambi i pianeti si muovono, quindi al lancio Marte deve trovarsi più avanti della Terra di un certo ${term('fase','angolo di fase')}.</p>`,
+   act:['Simula il viaggio',()=>{ peek('percorsi'); select('sole'); if($('simulate')) $('simulate').click(); }]},
+  {h:'Il periodo sinodico', p:`<p>Le finestre si ripetono ogni ${term('sinodico','periodo sinodico')}, il tempo che serve alla Terra per «riprendere» Marte di un giro intero:</p><div class="formula">1/S = 1/T<sub>Terra</sub> − 1/T<sub>Marte</sub></div><p>Con 1 anno e 1,88 anni si ottiene S ≈ 2,14 anni, circa 26 mesi.</p>`,
+   ask:['Calcola il periodo sinodico tra Terra e Giove (T = 11,86 anni).','1/S = 1 − 1/11,86 ≈ 0,916, quindi S ≈ 1,09 anni: circa 13 mesi. Le finestre per Giove si aprono quasi ogni anno.']}
+ ]},
+ {t:'Andata, ritorno e atterraggio', d:'Sosta tattica, frenata atmosferica e il costo di entrare in orbita attorno ai giganti.', steps:[
+  {h:'Andata e ritorno', p:`<p>In una missione di andata e ritorno non si riparte subito. Si aspetta che la Terra torni nella posizione giusta: è la sosta tattica, che il pannello Percorsi calcola e mostra.</p>`,
+   act:['Pianifica andata e ritorno su Marte',()=>{ pause(); setMissionUI({from:'terra',to:'marte',trip:'ritorno',dep:'orbita',arr:'orbita',aero:'motori',searchJd:jd}); peek('percorsi'); select('sole'); }],
+   ask:['Perché non conviene ripartire subito dopo l’arrivo?','Appena arrivati, Terra e Marte sono nella posizione sbagliata: ripartire subito costerebbe moltissimo ΔV o sarebbe impossibile. Si aspetta la prossima finestra di ritorno.']},
+  {h:'Atterrare con i motori', p:`<p>Ora la missione scende sulla superficie di Marte frenando solo con i motori. Guarda come sale il ΔV totale.</p>`,
+   act:['Atterra a motori',()=>{ setMissionUI({trip:'andata',arr:'superficie',aero:'motori'}); peek('percorsi'); }]},
+  {h:'Frenare con l’atmosfera', p:`<p>Marte ha un’atmosfera sottile ma utile: lo scudo termico e il paracadute fanno quasi tutto il lavoro. Con la ${term('aerofrenata','frenata atmosferica')} il ΔV cala di diversi km/s. È così che sono atterrati Curiosity e Perseverance.</p>`,
+   act:['Usa la frenata atmosferica',()=>{ setMissionUI({arr:'superficie',aero:'atmosfera'}); peek('percorsi'); }]},
+  {h:'Il caso dei giganti', p:`<p>Guarda l’elenco «Da Terra verso…» nel pannello Percorsi, con l’arrivo in orbita a motori: Giove costa molto più di Nettuno, anche se è più vicino.</p>`,
+   act:['Pianifica Terra → Giove in orbita',()=>{ setMissionUI({to:'giove',trip:'andata',arr:'orbita',aero:'motori'}); peek('percorsi'); }],
+   ask:['Perché entrare in orbita bassa attorno a Giove costa così tanto?','La gravità di Giove è enorme: la sonda vi cade dentro a quasi 60 km/s e per restare in orbita bassa deve frenare di molti km/s. Le missioni reali, come Juno, entrano in orbite molto allungate, che costano molto meno.']}
+ ]}
+];
+const lessonState = {i:null, s:0};
+function renderLessons(){
+  const el=$('tab-lezioni'), L=lessonState;
+  if(L.i===null){
+    el.innerHTML = `<p>Brevi percorsi guidati. Ogni passo ha un pulsante che prepara la scena e una domanda su cui ragionare.</p><div class="llist">` +
+      LESSONS.map((l,i)=>`<button data-lesson="${i}"><b><span class="n">${i+1}.</span> ${l.t}</b><small>${l.d} ${l.steps.length} passi.</small></button>`).join('') + `</div>`;
+    el.querySelectorAll('[data-lesson]').forEach(b=>b.onclick=()=>{ L.i=+b.dataset.lesson; L.s=0; renderLessons(); });
+    return;
+  }
+  const les=LESSONS[L.i], st=les.steps[L.s], n=les.steps.length;
+  el.innerHTML = `<button class="back" id="lback">← Tutte le lezioni</button>
+    <p class="count">${les.t}, passo ${L.s+1} di ${n}</p><div class="bar"><i style="width:${(L.s+1)/n*100}%"></i></div>
+    <h3>${st.h}</h3>${st.p}
+    ${st.act?`<button class="act on" id="lact">${st.act[0]}</button>`:''}
+    ${st.ask?`<details class="ask"><summary>${st.ask[0]}</summary><p>${st.ask[1]}</p></details>`:''}
+    <div class="lnav"><button id="lprev" ${L.s===0?'disabled':''}>Indietro</button><button id="lnext">${L.s===n-1?'Fine':'Avanti'}</button></div>`;
+  $('lback').onclick=()=>{ L.i=null; renderLessons(); };
+  if(st.act) $('lact').onclick=st.act[1];
+  $('lprev').onclick=()=>{ L.s--; renderLessons(); };
+  $('lnext').onclick=()=>{ if(L.s===n-1) L.i=null; else L.s++; renderLessons(); $('imparaPanel').scrollTop=0; };
+}
+
+// ---------- Scheda Keplero ----------
+function renderKepler(){
+  const el=$('tab-keplero'), b=byId(kep.planet), [a,e]=elementsAt(b,jd);
+  const q=a*(1-e), Q=a*(1+e), v=r=>Math.sqrt(MU_SUN*(2/(r*AU_KM)-1/(a*AU_KM)));
+  const mk=x=>Math.round(x*AU_KM/1e6).toLocaleString('it-IT');
+  el.innerHTML = `<p>Scegli un pianeta e mostra nella scena gli elementi delle prime due ${term('keplero','leggi di Keplero')}. Mercurio e Plutone hanno le orbite più schiacciate.</p>
+    <div class="kchips">${BODIES.map(x=>`<button data-kp="${x.id}" class="${x.id===kep.planet?'on':''}"><span class="dot" style="background:${x.color}"></span>${x.name}</button>`).join('')}</div>
+    <div class="row"><button id="kAps" class="${kep.apsides?'on':''}" aria-pressed="${kep.apsides}">Perielio e afelio</button><button id="kAreas" class="${kep.areas?'on':''}" aria-pressed="${kep.areas}">Aree uguali</button><button id="kFrame">Inquadra</button></div>
+    ${kep.areas?`<p class="warn" style="margin-top:8px">Ogni spicchio è il tratto percorso in 1/12 del periodo. ${scaleMode==='real'?'In scala reale le aree sono davvero uguali.':'Nella vista a distanze compresse le aree risultano deformate: passa alla scala reale.'}</p>`:''}
+    <dl class="kstats">
+      <dt>${term('perielio','Perielio')}</dt><dd>${nf(q,3)} UA (${mk(q)} mln km)</dd>
+      <dt>Afelio</dt><dd>${nf(Q,3)} UA (${mk(Q)} mln km)</dd>
+      <dt>Velocità al perielio</dt><dd>${nf(v(q),1)} km/s</dd>
+      <dt>Velocità all’afelio</dt><dd>${nf(v(Q),1)} km/s</dd>
+      <dt>${term('eccentricita','Eccentricità')}</dt><dd>${nf(e,4)}</dd>
+    </dl>
+    <h4>Terza legge: T² = a³</h4>
+    <p>Per ogni pianeta il quadrato del periodo in anni è uguale al cubo del semiasse maggiore in UA: il rapporto nell’ultima colonna vale sempre circa 1.</p>
+    <div class="tablewrap"><table class="kt"><thead><tr><th>Pianeta</th><th>a (UA)</th><th>T (anni)</th><th>a³</th><th>T²</th><th>T²/a³</th></tr></thead><tbody>
+    ${BODIES.map(x=>{ const A=x.el[0], T=360/x.rt[3]*100, f=n=>n<10?nf(n,2):n<1000?nf(n,1):Math.round(n).toLocaleString('it-IT');
+      return `<tr><td>${x.name}</td><td>${f(A)}</td><td>${f(T)}</td><td>${f(A*A*A)}</td><td>${f(T*T)}</td><td>${nf(T*T/(A*A*A),3)}</td></tr>`; }).join('')}
+    </tbody></table></div>
+    <canvas id="kplot" role="img" aria-label="Grafico logaritmico del periodo in funzione del semiasse maggiore"></canvas>
+    <p class="warn">Il grafico usa scale logaritmiche: i punti stanno tutti sulla stessa retta, di pendenza 3/2.</p>`;
+  el.querySelectorAll('[data-kp]').forEach(btn=>btn.onclick=()=>{ setKepler({planet:btn.dataset.kp}); if(kep.areas||kep.apsides) frameOrbit(kep.planet); });
+  $('kAps').onclick=()=>{ setKepler({apsides:!kep.apsides}); if(kep.apsides) frameOrbit(kep.planet); };
+  $('kAreas').onclick=()=>{ setKepler({areas:!kep.areas}); if(kep.areas) frameOrbit(kep.planet); };
+  $('kFrame').onclick=()=>frameOrbit(kep.planet);
+  drawKPlot();
+}
+function drawKPlot(){
+  const cv=$('kplot'); if(!cv) return;
+  const W=cv.clientWidth, H=cv.clientHeight, dpr=Math.min(devicePixelRatio,2); if(!W||!H) return;
+  cv.width=W*dpr; cv.height=H*dpr; const x=cv.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0);
+  const cs=getComputedStyle(document.documentElement), ink=cs.getPropertyValue('--ink-soft').trim()||'#888', line=cs.getPropertyValue('--line').trim()||'#ccc';
+  const L=34,R=10,T=8,B=26, la0=-.5, la1=1.7, lt0=-.75, lt1=2.55;
+  const X=v=>L+(v-la0)/(la1-la0)*(W-L-R), Y=v=>H-B-(v-lt0)/(lt1-lt0)*(H-T-B);
+  x.font='11px "Instrument Sans",system-ui,sans-serif'; x.fillStyle=ink; x.strokeStyle=line; x.lineWidth=1;
+  [.1,1,10,50].forEach(a=>{ const px=X(Math.log10(a)); x.beginPath(); x.moveTo(px,T); x.lineTo(px,H-B); x.stroke(); x.textAlign='center'; x.fillText(String(a).replace('.',','),px,H-B+14); });
+  [.1,1,10,100].forEach(t=>{ const py=Y(Math.log10(t)); x.beginPath(); x.moveTo(L,py); x.lineTo(W-R,py); x.stroke(); x.textAlign='right'; x.fillText(String(t).replace('.',','),L-5,py+4); });
+  x.textAlign='center'; x.fillText('a (UA)',(L+W-R)/2,H-1);
+  x.save(); x.translate(10,(T+H-B)/2); x.rotate(-Math.PI/2); x.fillText('T (anni)',0,0); x.restore();
+  x.strokeStyle='#D2AE62'; x.lineWidth=1.5; x.beginPath(); x.moveTo(X(la0),Y(1.5*la0)); x.lineTo(X(la1),Y(1.5*la1)); x.stroke();
+  BODIES.forEach(b=>{ const a=b.el[0], T2=360/b.rt[3]*100; x.fillStyle=b.color; x.beginPath(); x.arc(X(Math.log10(a)),Y(Math.log10(T2)),4.5,0,7); x.fill(); });
+}
+
+// ---------- Missioni storiche ----------
+const MISSIONS = [
+  {n:'Mariner 2', to:'venere', l:[1962,8,27], a:[1962,12,14], arr:'sorvolo', d:'La prima sonda a sorvolare con successo un altro pianeta.'},
+  {n:'Mariner 4', to:'marte', l:[1964,11,28], a:[1965,7,15], arr:'sorvolo', d:'Inviò le prime foto ravvicinate di Marte.'},
+  {n:'Pioneer 10', to:'giove', l:[1972,3,3], a:[1973,12,4], arr:'sorvolo', d:'La prima sonda ad attraversare la fascia degli asteroidi e a sorvolare Giove.'},
+  {n:'Viking 1', to:'marte', l:[1975,8,20], a:[1976,6,19], arr:'orbita', d:'Entrò in orbita attorno a Marte; il suo lander toccò il suolo il 20 luglio 1976.'},
+  {n:'Voyager 1', to:'giove', l:[1977,9,5], a:[1979,3,5], arr:'sorvolo', d:'Dopo Giove usò una fionda gravitazionale per raggiungere Saturno: qui si ricostruisce solo il primo tratto.'},
+  {n:'Mars Pathfinder', to:'marte', l:[1996,12,4], a:[1997,7,4], arr:'superficie', aero:true, d:'Atterrò rimbalzando sugli airbag e portò su Marte il primo rover, Sojourner.'},
+  {n:'Venus Express', to:'venere', l:[2005,11,9], a:[2006,4,11], arr:'orbita', d:'La sonda europea che studiò l’atmosfera di Venere dall’orbita per otto anni.'},
+  {n:'Curiosity', to:'marte', l:[2011,11,26], a:[2012,8,6], arr:'superficie', aero:true, d:'Atterrò con scudo termico, paracadute e una «gru volante» a razzo.'},
+  {n:'Perseverance', to:'marte', l:[2020,7,30], a:[2021,2,18], arr:'superficie', aero:true, d:'Atterrò nel cratere Jezero portando l’elicottero Ingenuity.'}
+];
+const jdUTC = (y,m,d) => jdFromMs(Date.UTC(y,m-1,d,12));
+function renderMissions(){
+  const el=$('tab-missioni');
+  el.innerHTML = `<p>Ricostruisci il viaggio di missioni reali con le loro date di lancio e di arrivo, e confrontalo con la partenza migliore calcolata nella stessa ${term('finestra','finestra')}.</p>` +
+    MISSIONS.map((m,i)=>{ const L=jdUTC(...m.l), A=jdUTC(...m.a);
+      return `<div class="mcard"><b>${m.n}</b><div class="meta">Terra → ${byId(m.to).name}, ${pd('dal',L)} ${pd('al',A)} (${fmtDur(A-L)})</div><p style="margin:0 0 8px">${m.d}</p><button data-m="${i}">Ricostruisci il viaggio</button><div class="mres" id="mres${i}" hidden></div></div>`; }).join('');
+  el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>replayMission(+b.dataset.m));
+}
+function replayMission(i){
+  const m=MISSIONS[i], L=jdUTC(...m.l), A=jdUTC(...m.a);
+  pause(); setKepler({apsides:false,areas:false});
+  setMissionUI({from:'terra',to:m.to,trip:'andata',dep:'orbita',arr:m.arr,aero:m.aero?'atmosfera':'motori',searchJd:L-45,custom:{launch:L,tof:A-L}});
+  goJd(L); select('sole'); viewFrom(m.to==='giove'?260:190); peek('percorsi'); bringFront(PANELS.impara);
+  const p=mission.plan, outMode=m.arr==='sorvolo'||(m.aero&&(m.to in ATMO))?'none':'burn';
+  const bl=bestLeg(byId('terra'),byId(m.to),L-90,outMode,180), best=bl&&makePlan('terra',m.to,{launch:bl.launch,tof:bl.tofDays}), out=$('mres'+i);
+  out.hidden=false;
+  out.innerHTML = p && p.custom && best
+    ? `Con le date reali servono <b>${nf(p.total,1)} km/s</b> di ΔV. Entro tre mesi dalla data reale, la partenza migliore sarebbe stata ${pd('il',best.launch)}, con ${nf(best.total,1)} km/s e ${fmtDur(best.tofDays)} di viaggio. Premi «Simula il viaggio» nel pannello Percorsi per vederlo.`
+    : `Con queste date non esiste un’orbita diretta semplice: la missione ha seguito una traiettoria diversa.`;
+}
+
+// ---------- Quiz ----------
+const QUIZ = [
+  {q:'Perché le missioni verso Marte partono solo ogni 26 mesi circa?', o:['Perché Terra e Marte tornano nella giusta posizione reciproca solo dopo un periodo sinodico','Perché Marte è visibile solo in estate','Perché i razzi devono aspettare l’allineamento con la Luna','Perché l’orbita di Marte cambia forma ogni due anni'], x:'Il periodo sinodico Terra–Marte è di circa 2,14 anni: solo dopo questo tempo i due pianeti tornano nella posizione che permette un viaggio economico.'},
+  {q:'Cosa misura il ΔV di una missione?', o:['La variazione di velocità che i motori devono fornire','La distanza percorsa dalla sonda','La velocità massima raggiunta','La durata del viaggio'], x:'Il ΔV è il «costo» della missione: più ΔV significa più propellente, e la massa di propellente cresce in modo esponenziale con il ΔV.'},
+  {q:'In quale punto della sua orbita un pianeta è più veloce?', o:['Al perielio','All’afelio','A metà strada tra perielio e afelio','La velocità è sempre la stessa'], x:'Per la seconda legge di Keplero la linea Sole–pianeta spazza aree uguali in tempi uguali: vicino al Sole il pianeta deve muoversi più in fretta.'},
+  {q:'Cosa indicano le zone chiare nella mappa delle finestre?', o:['Partenze e durate che richiedono poco ΔV','I giorni con il cielo più limpido','Le date in cui il pianeta è più vicino alla Terra','Le traiettorie con fionda gravitazionale'], x:'Ogni punto della mappa è una coppia data di partenza–durata; il colore indica il ΔV. Le zone chiare sono le finestre di lancio.'},
+  {q:'Cos’è una fionda gravitazionale?', o:['Un passaggio ravvicinato a un pianeta che cambia velocità e direzione della sonda senza consumare propellente','Un motore elettrico a ioni','Un lancio con un cannone elettromagnetico','Una frenata nell’atmosfera di un pianeta'], x:'Passando vicino a un pianeta, la sonda «ruba» un po’ della sua velocità orbitale. Voyager, Cassini e New Horizons ne hanno usate diverse.'},
+  {q:'Perché raggiungere Mercurio costa più ΔV che raggiungere Marte?', o:['Bisogna perdere gran parte della velocità orbitale della Terra per avvicinarsi al Sole','Mercurio è molto più lontano dalla Terra di Marte','Mercurio ha un’atmosfera densissima','Mercurio gira attorno al Sole in senso opposto'], x:'Andando verso il Sole la sonda accelera «cadendo»: arriva a Mercurio molto veloce e deve frenare parecchio, senza atmosfera che aiuti.'},
+  {q:'La luce impiega circa 8,3 minuti dal Sole alla Terra. Quanto impiega fino a un oggetto a 4 UA dal Sole?', o:['Circa 33 minuti','Circa 2 minuti','Circa 16 minuti','Circa 66 minuti'], x:'Il tempo è proporzionale alla distanza: 4 × 8,3 ≈ 33 minuti.'},
+  {q:'Secondo la terza legge di Keplero, quanto dura l’anno di un asteroide con semiasse maggiore di 4 UA?', o:['8 anni','4 anni','16 anni','64 anni'], x:'T² = a³ = 4³ = 64, quindi T = 8 anni.'}
+];
+function dynamicQuestions(){
+  const out=[], E=byId('terra').cur||helio(byId('terra'),jd), dateTxt=fmtJd(jd);
+  const near=['mercurio','venere','marte','giove'].map(id=>{ const p=helio(byId(id),jd).p; return {id, d:Math.hypot(p[0]-E.p[0],p[1]-E.p[1],p[2]-E.p[2])}; }).sort((a,b)=>a.d-b.d);
+  out.push({q:`Alla data mostrata (${dateTxt}), quale di questi pianeti è più vicino alla Terra?`, o:near.map(n=>byId(n.id).name),
+    x:`Distanze dalla Terra: ${near.map(n=>`${byId(n.id).name} ${nf(n.d,2)} UA`).join(', ')}. Curiosità: in media il pianeta più vicino alla Terra è Mercurio, perché non si allontana mai molto dal Sole.`});
+  const nep=Math.hypot(...helio(byId('nettuno'),jd).p), plu=Math.hypot(...helio(byId('plutone'),jd).p);
+  out.push({q:`Alla data mostrata, chi è più lontano dal Sole tra Nettuno e Plutone?`, o: plu>nep?['Plutone','Nettuno']:['Nettuno','Plutone'],
+    x:`Nettuno è a ${nf(nep,1)} UA, Plutone a ${nf(plu,1)} UA. L’orbita di Plutone è così eccentrica che tra il 1979 e il 1999 è stato più vicino al Sole di Nettuno.`});
+  const w=bestLeg(byId('terra'),byId('marte'),jd,'burn');
+  if(w){ const fm=t=>new Intl.DateTimeFormat('it-IT',{month:'long',year:'numeric'}).format(new Date(msFromJd(t)));
+    out.push({q:`Partendo dalla data mostrata, quando si apre la prossima finestra per andare in orbita attorno a Marte?`, o:[fm(w.launch),fm(w.launch+182),fm(w.launch+395),fm(w.launch+600)],
+      x:`Il calcolo indica come partenza migliore ${pd('il',w.launch)}. La finestra successiva arriva circa 26 mesi dopo.`}); }
+  return out;
+}
+let quiz=null;
+const shuffle=a=>{ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+function startQuiz(){
+  const qs=shuffle([...QUIZ, ...dynamicQuestions()]).map(q=>{ const opts=shuffle(q.o.map((t,i)=>({t,ok:i===0}))); return {...q,opts}; });
+  quiz={qs,i:0,score:0,answered:false}; renderQuiz();
+}
+function renderQuiz(){
+  const el=$('tab-quiz'), Q=quiz;
+  if(Q.i>=Q.qs.length){
+    const pct=Q.score/Q.qs.length;
+    el.innerHTML=`<h3>Risultato</h3><div class="qscore">${Q.score} su ${Q.qs.length}</div><p>${pct===1?'Perfetto: hai risposto bene a tutto.':pct>=.7?'Ottimo lavoro.':pct>=.4?'Buona base: le lezioni ti aiutano a colmare i dubbi.':'Riprova dopo aver seguito le lezioni.'}</p><p class="warn">Alcune domande dipendono dalla data mostrata: cambiandola, il quiz cambia.</p><button class="on" id="qagain">Ricomincia</button>`;
+    $('qagain').onclick=startQuiz; return;
+  }
+  const q=Q.qs[Q.i];
+  el.innerHTML=`<p class="count">Domanda ${Q.i+1} di ${Q.qs.length}, punteggio ${Q.score}</p><div class="bar"><i style="width:${Q.i/Q.qs.length*100}%"></i></div>
+    <h3>${q.q}</h3><div class="qopts">${q.opts.map((o,k)=>`<button data-k="${k}">${o.t}</button>`).join('')}</div><div id="qfb"></div>`;
+  el.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
+    const o=q.opts[+b.dataset.k]; if(o.ok) Q.score++;
+    el.querySelectorAll('[data-k]').forEach(x=>{ x.disabled=true; if(q.opts[+x.dataset.k].ok) x.classList.add('ok'); });
+    if(!o.ok) b.classList.add('ko');
+    $('qfb').innerHTML=`<div class="qfb"><b>${o.ok?'Giusto.':'Non proprio.'}</b> ${q.x}</div><button class="on" id="qnext">${Q.i===Q.qs.length-1?'Vedi il risultato':'Avanti'}</button>`;
+    $('qnext').onclick=()=>{ Q.i++; renderQuiz(); };
+    $('qnext').focus();
+  });
+}
+
+// La scena si centra nello spazio lasciato libero dai pannelli
+const vo={x:0,y:0};
+function viewTarget(){
+  const W=innerWidth, H=innerHeight;
+  if(isMobile()){
+    const open=Object.keys(PANELS).filter(isOpen);
+    if(!open.length) return {x:0,y:0};
+    const top=PANELS[open[0]].getBoundingClientRect().top;
+    return {x:0, y:Math.min(0, top/2 - H/2)};
+  }
+  let L=0, R=W;
+  ['esplora','impara'].forEach(n=>{ if(isOpen(n)) L=Math.max(L, PANELS[n].getBoundingClientRect().right); });
+  if(isOpen('percorsi')) R=Math.min(R, PANELS.percorsi.getBoundingClientRect().left);
+  if(R-L<220) return {x:0,y:0};
+  return {x:(L+R)/2 - W/2, y:0};
+}
+function applyViewOffset(dt){
+  const t=viewTarget(), k=Math.min(1,dt*6);
+  vo.x+=(t.x-vo.x)*k; vo.y+=(t.y-vo.y)*k;
+  if(Math.abs(vo.x)<.5 && Math.abs(vo.y)<.5){ if(camera.view && camera.view.enabled) camera.clearViewOffset(); }
+  else camera.setViewOffset(innerWidth,innerHeight,-vo.x,-vo.y,innerWidth,innerHeight);
+}
+
+function initLearning(){
+  renderLessons(); renderGlossary(); renderMissions();
+  if(isMobile()) Object.keys(PANELS).forEach(n=>PANELS[n].classList.add('closed'));
+  else PANELS.percorsi.classList.add('closed');
+  syncDock();
+}
+
+// ---------- Ciclo ----------
+const tmp=new THREE.Vector3(); let prev=performance.now(), infoTick=0;
+function frame(now){
+  const dt=Math.min(.1,(now-prev)/1000); prev=now;
+  applyViewOffset(dt);
+  if(playing){ jd += SPEEDS[speedIdx]*dt; if(Math.abs(jd-lastOrbitJd)>365){rebuildOrbits(jd); lastOrbitJd=jd;} }
+  const mp = mission.plan;
+  if(mission.sim && mp && jd>=mp.end){ jd=mp.end; playing=false; mission.sim=false; updateSpeedUI(); }
+
+  BODIES.forEach(b=>{
+    b.cur=helio(b,jd); b.mesh.position.copy(toScene(b.cur.p));
+    if(b.moonSys){ b.moonSys.position.copy(b.mesh.position); b.moonSys.visible = showMoons; }
+  });
+  allMoons.forEach(m=>{ const L=(m.L0 + 360/m.P*(jd-m.ep))*D2R; m.mesh.position.set(Math.cos(L)*m.dist,0,-Math.sin(L)*m.dist); });
+  earthPos = BODIES[2].cur.p;
+  probe.visible=false;
+  if(mp){
+    let label='Sonda';
+    if(jd>=mp.launch && jd<=mp.arrival){ probe.visible=true; probe.position.copy(toScene(mp.at(jd-mp.launch))); }
+    else if(mp.back && jd>mp.arrival && jd<mp.back.launch){
+      probe.visible=true; label='Sonda in sosta';
+      probe.position.copy(mp.B.mesh.position); probe.position.y += mp.B.size*mp.B.kp + 1.4;
+    }
+    else if(mp.back && jd>=mp.back.launch && jd<=mp.back.arrival){ probe.visible=true; label='Sonda in rientro'; probe.position.copy(toScene(mp.back.at(jd-mp.back.launch))); }
+    if(probeLbl.textContent!==label) probeLbl.textContent=label;
+    probe.rotation.y+=dt*2;
+  }
+
+  const sel=BODIES.find(b=>b.id===selected);
+  const target = sel ? sel.mesh.position : sun.position;
+  const delta = tmp.copy(target).sub(controls.target);
+  controls.target.add(delta); camera.position.add(delta);
+  controls.update();
+
+  const d=new Date(msFromJd(jd)); $("dateText").textContent=fmtDate.format(d);
+  if(document.activeElement!==$("dateIn")) $("dateIn").value=d.toISOString().slice(0,10);
+  if((infoTick+=dt)>.2){infoTick=0; renderInfo();}
+
+  labelsEl.style.display = showLabels ? "block" : "none";
+  if(showLabels){
+    scene.updateMatrixWorld();
+    const place=(el,v,dy)=>{
+      v.project(camera);
+      const vis = v.z<1 && Math.abs(v.x)<1.1 && Math.abs(v.y)<1.1;
+      el.style.display = vis?"block":"none";
+      if(vis) el.style.transform=`translate(${(v.x*.5+.5)*innerWidth+8}px,${(-v.y*.5+.5)*innerHeight-dy}px)`;
+    };
+    BODIES.forEach(b=>{ tmp.copy(b.mesh.position); tmp.y += b.size*b.kp*1.2; place(b.label,tmp,18); });
+    if(probe.visible){ tmp.copy(probe.position); tmp.y+=1.2; place(probeLbl,tmp,18); } else probeLbl.style.display='none';
+    allMoons.forEach(m=>{
+      if(!showMoons || selected!==m.parent.id){ m.label.style.display="none"; return; }
+      m.mesh.getWorldPosition(tmp); place(m.label,tmp,14);
+    });
+    kepLbl.forEach((l,i)=>{ if(!kep.apsides){ l.style.display='none'; return; } tmp.copy(kepPts[i]); place(l,tmp,14); });
+  }
+
+  renderer.render(scene,camera);
+  requestAnimationFrame(frame);
+}
+
+rebuildOrbits(jd);
+layoutMoons();
+BODIES.forEach(b=>{ b.cur=helio(b,jd); });
+updateSpeedUI(); select("sole"); initLearning();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
